@@ -162,7 +162,7 @@ TEST = dict(
     TEST_BBOX_TYPE="est",  # gt | est
     COLOR_AUG=False,  # use random color aug as train
     USE_PNP=False,  # use pnp or direct prediction
-    SAVE_RESULTS_ONLY=False,  # turn this on to only save the predicted results
+    SAVE_RESULTS_ONLY=True,  # turn this on to only save the predicted results
     # ransac_pnp | net_iter_pnp (learned pnp init + iter pnp) | net_ransac_pnp (net init + ransac pnp)
     # net_ransac_pnp_rot (net_init + ransanc pnp --> net t + pnp R)
     PNP_TYPE="ransac_pnp",

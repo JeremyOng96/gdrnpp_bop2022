@@ -8,6 +8,7 @@ import os.path as osp
 import random
 import time
 from collections import OrderedDict
+import os
 
 import cv2
 import mmcv
@@ -31,7 +32,7 @@ from lib.vis_utils.image import grid_show, vis_image_bboxes_cv2, vis_image_mask_
 
 from .engine_utils import batch_data, get_out_coor, get_out_mask, batch_data_inference_roi
 from .test_utils import eval_cached_results, save_and_eval_results, to_list
-
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,10 @@ class GDRN_Evaluator(DatasetEvaluator):
         self.obj_ids = [self.data_ref.obj2id[obj_name] for obj_name in self.obj_names]
         # with contextlib.redirect_stdout(io.StringIO()):
         #     self._coco_api = COCO(self._metadata.json_file)
-        self.model_paths = [
-            osp.join(self.data_ref.model_eval_dir, "obj_{:06d}.ply".format(obj_id)) for obj_id in self.obj_ids
-        ]
-        self.model_paths = [str(f) for f in sorted(list(Path(self.data_ref.model_eval_dir).rglob("obj_*.ply")))]
+        # self.model_paths = [
+        #     osp.join(self.data_ref.model_eval_dir, "obj_{:06d}.ply".format(obj_id)) for obj_id in self.obj_ids
+        # ]
+        self.model_paths = [str(f) for f in sorted(self.data_ref.model_eval_dir)]
         self.models_3d = [
             inout.load_ply(model_path, vertex_scale=self.data_ref.vertex_scale) for model_path in self.model_paths
         ]
@@ -187,7 +188,11 @@ class GDRN_Evaluator(DatasetEvaluator):
             start_process_time = time.perf_counter()
             for inst_i in range(len(_input["roi_img"])):
                 out_i += 1  # the index in the flattened output
-                scene_im_id_split = _input["scene_im_id"][inst_i].split("/")
+
+                name, ext = os.path.splitext(_input["file_name"][inst_i])
+                file_name = f"{name}_{random.randint(0, 100000):06d}{ext}" # add random integer to avoid duplicate file names
+
+
                 K = _input["cam"][inst_i].cpu().numpy().copy()
 
                 roi_label = _input["roi_cls"][inst_i]  # 0-based label
@@ -196,18 +201,17 @@ class GDRN_Evaluator(DatasetEvaluator):
                 if cls_name is None:
                     continue
 
-                # scene_id = int(scene_im_id_split[0])
-                scene_id = scene_im_id_split[0]
-                im_id = int(scene_im_id_split[1])
                 obj_id = self.data_ref.obj2id[cls_name]
 
-                # get pose
+                # get pose_gt
+                pose_gt = _input['annotations'][0]['pose'] # assume only one annotation per image
+                # get pose_est
                 rot_est = out_rots[out_i]
                 trans_est = out_transes[out_i]
                 pose_est = np.hstack([rot_est, trans_est.reshape(3, 1)])
 
                 if cfg.DEBUG:  # visualize pose
-                    file_name = _input["file_name"][inst_i]
+                    file_name = _input["file_name"][inst_i].split('/')[-1]
 
                     # if f"{int(scene_id)}/{im_id}" != "9/47":
                     #     continue
@@ -222,14 +226,14 @@ class GDRN_Evaluator(DatasetEvaluator):
                     ren_im, _ = self.ren.finish()
                     grid_show(
                         [ren_im[:, :, ::-1], im_vis[:, :, ::-1]],
-                        [f"ren_im_{cls_name}", f"{scene_id}/{im_id}_{score}"],
+                        [f"ren_im_{cls_name}", f"{file_name}_{score}"],
                         row=1,
                         col=2,
                     )
 
                 json_results.extend(
                     self.pose_prediction_to_json(
-                        pose_est, scene_id, im_id, obj_id=obj_id, score=score, pose_time=output["time"], K=K
+                        pose_gt, pose_est, file_name, obj_id=obj_id, score=score, pose_time=output["time"], K=K
                     )
                 )
 
@@ -601,13 +605,13 @@ class GDRN_Evaluator(DatasetEvaluator):
         # in-place modification, no return
         times = {}
         for item in results:
-            im_key = "{}/{}".format(item["scene_id"], item["im_id"])
+            im_key = "{}".format(item["img_name"])
             if im_key not in times:
                 times[im_key] = []
             times[im_key].append(item["time"])
 
         for item in results:
-            im_key = "{}/{}".format(item["scene_id"], item["im_id"])
+            im_key = "{}".format(item["img_name"])
             item["time"] = float(np.max(times[im_key]))
 
     def pose_from_upnp(self, mean_pts2d, covar, points_3d, K):
@@ -634,7 +638,7 @@ class GDRN_Evaluator(DatasetEvaluator):
         pose_pred = uncertainty_pnp_v2(mean_pts2d, covar, points_3d, K)
         return pose_pred
 
-    def pose_prediction_to_json(self, pose_est, scene_id, im_id, obj_id, score=None, pose_time=-1, K=None):
+    def pose_prediction_to_json(self, pose_gt, pose_est, file_name, obj_id, score=None, pose_time=-1, K=None):
         """
         Args:
             pose_est:
@@ -650,17 +654,21 @@ class GDRN_Evaluator(DatasetEvaluator):
         results = []
         if score is None:  # TODO: add score key in test bbox json file
             score = 1.0
-        rot = pose_est[:3, :3]
-        trans = pose_est[:3, 3]
+        rot_est = pose_est[:3, :3]
+        trans_est = pose_est[:3, 3]
+        rot_gt = pose_gt[:3, :3]
+        trans_gt = pose_gt[:3, 3]
         # for standard bop datasets, scene_id and im_id can be obtained from file_name
         result = {
-            "scene_id": scene_id,  # if not available, assume 0
-            "im_id": im_id,
+            "img_name": file_name,
             "obj_id": obj_id,  # the obj_id in bop datasets
             "score": score,
-            "R": to_list(rot),
-            "t": to_list(1000 * trans),  # mm
+            "R_gt": to_list(rot_gt),
+            "t_gt": to_list(1000 * trans_gt),  # mm
+            "R_est": to_list(rot_est),
+            "t_est": to_list(1000 * trans_est),  # mm
             "time": pose_time,
+            "K": to_list(K) if K is not None else None,  # Add camera intrinsic matrix
         }
         results.append(result)
         return results
@@ -843,11 +851,13 @@ def gdrn_save_result_of_dataset(cfg, model, data_loader, output_dir, dataset_nam
         result_name = "results.pkl"
     mmcv.mkdir_or_exist(output_dir)  # NOTE: should be the same as the evaluation output dir
     result_path = osp.join(output_dir, result_name)
+    result_path_list = osp.join(output_dir, "results_list.pkl")
     if osp.exists(result_path):
         logger.warning("{} exists, overriding!".format(result_path))
 
     total = len(data_loader)  # inference data loader must have a fixed length
     result_dict = {}
+    result_list = []
     VIS = cfg.TEST.VIS  # NOTE: change this for debug/vis
     if VIS:
         import cv2
@@ -953,7 +963,6 @@ def gdrn_save_result_of_dataset(cfg, model, data_loader, output_dir, dataset_nam
                 for i_inst in range(len(_input["roi_img"])):
                     i_out += 1
 
-                    scene_im_id = _input["scene_im_id"][i_inst]
                     cur_obj_id = obj_ids[int(batch["roi_cls"][i_out])]
                     cur_res = {
                         "obj_id": cur_obj_id,
@@ -974,9 +983,15 @@ def gdrn_save_result_of_dataset(cfg, model, data_loader, output_dir, dataset_nam
                         )
                     if "full_mask" in out_dict:
                         cur_res["full_mask"] = full_masks_rle[i_out]
+                    
+                    file_name = _input["file_name"][i_inst].split('/')[-1]
 
+
+                    scene_im_id = int(file_name.split('_')[1])
                     if scene_im_id not in result_dict:
                         result_dict[scene_im_id] = []
+
+                    result_list.append(cur_res)
                     result_dict[scene_im_id].append(cur_res)  # each image's results saved as a list
 
                     if VIS:  # vis -----------------------------------------------------------
@@ -1000,6 +1015,7 @@ def gdrn_save_result_of_dataset(cfg, model, data_loader, output_dir, dataset_nam
                             vis_dict[f"im_{bbox_key}_mask_full"] = img_vis_full_mask[:, :, ::-1]
 
                         K = _input["cam"][i_inst].detach().cpu().numpy()
+                        cur_res["cam"] = K
                         kpt3d = kpts3d_dict[str(cur_obj_id)]["bbox3d_and_center"]
                         # gt pose
                         gt_idx = scene_im_id_to_gt_index[scene_im_id]
@@ -1117,6 +1133,7 @@ def gdrn_save_result_of_dataset(cfg, model, data_loader, output_dir, dataset_nam
     )
 
     mmcv.dump(result_dict, result_path)
+    mmcv.dump(result_list, result_path_list)
     logger.info("Results saved to {}".format(result_path))
 
 

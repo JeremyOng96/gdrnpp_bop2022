@@ -50,34 +50,7 @@ def save_and_eval_results(cfg, results_all, output_dir, obj_ids=None):
                     items.append(_to_str(result[res_k]))
                 f.write(",".join(items) + "\n")
         logger.info("wrote results to: {}".format(res_path))
-
-    if not cfg.VAL.SAVE_BOP_CSV_ONLY:
-        result_names_str = ",".join(result_names)
-        eval_cmd = [
-            "python",
-            cfg.VAL.SCRIPT_PATH,
-            "--results_path={}".format(save_root),
-            "--result_filenames={}".format(result_names_str),
-            "--renderer_type={}".format(cfg.VAL.RENDERER_TYPE),
-            "--error_types={}".format(cfg.VAL.ERROR_TYPES),
-            "--eval_path={}".format(save_root),
-            "--targets_filename={}".format(cfg.VAL.TARGETS_FILENAME),
-            "--n_top={}".format(cfg.VAL.N_TOP),
-        ]
-        if cfg.VAL.SCORE_ONLY:
-            eval_cmd += ["--score_only"]
-        eval_time = time.perf_counter()
-        if subprocess.call(eval_cmd) != 0:
-            logger.warning("evaluation failed.")
-
-        load_and_print_val_scores_tab(
-            cfg,
-            eval_root=save_root,
-            result_names=result_names,
-            error_types=cfg.VAL.ERROR_TYPES.split(","),
-            obj_ids=obj_ids,
-        )
-        logger.info("eval time: {}s".format(time.perf_counter() - eval_time))
+    logger.info("Results saved without BOP evaluation as requested.")
 
 
 def eval_cached_results(cfg, output_dir, obj_ids=None):
@@ -88,7 +61,6 @@ def eval_cached_results(cfg, output_dir, obj_ids=None):
     result_names = []
     names = ["iter{}".format(i) for i in range(cfg.TEST.get("ITER_NUM", 0) + 1)]
     exp_id = cfg.EXP_ID
-    # print('exp_id', exp_id)
     for name in names:
         method_name = "{}-{}".format(exp_id.replace("_", "-"), name)
         result_name = f"{method_name}_{cfg.VAL.DATASET_NAME}-{cfg.VAL.SPLIT}{split_type_str}.csv"
@@ -100,43 +72,7 @@ def eval_cached_results(cfg, output_dir, obj_ids=None):
                 res_path = osp.join(save_root, result_name)
         assert osp.exists(res_path), res_path
         result_names.append(result_name)
-    try:
-        if not cfg.VAL.EVAL_PRINT_ONLY:
-            raise RuntimeError()
-        load_and_print_val_scores_tab(
-            cfg,
-            eval_root=save_root,
-            result_names=result_names,
-            error_types=cfg.VAL.ERROR_TYPES.split(","),
-            obj_ids=obj_ids,
-        )
-    except:
-        result_names_str = ",".join(result_names)
-        eval_cmd = [
-            "python",
-            cfg.VAL.SCRIPT_PATH,
-            "--results_path={}".format(save_root),
-            "--result_filenames={}".format(result_names_str),
-            "--renderer_type={}".format(cfg.VAL.RENDERER_TYPE),
-            "--error_types={}".format(cfg.VAL.ERROR_TYPES),
-            "--eval_path={}".format(save_root),
-            "--targets_filename={}".format(cfg.VAL.TARGETS_FILENAME),
-            "--n_top={}".format(cfg.VAL.N_TOP),
-        ]
-        if cfg.VAL.SCORE_ONLY:
-            eval_cmd += ["--score_only"]
-        eval_time = time.perf_counter()
-        if subprocess.call(eval_cmd) != 0:
-            logger.warning("evaluation failed.")
-
-        load_and_print_val_scores_tab(
-            cfg,
-            eval_root=save_root,
-            result_names=result_names,
-            error_types=cfg.VAL.ERROR_TYPES.split(","),
-            obj_ids=obj_ids,
-        )
-        logger.info("eval time: {}s".format(time.perf_counter() - eval_time))
+    logger.info("Found cached results without running BOP evaluation as requested.")
     exit(0)
 
 

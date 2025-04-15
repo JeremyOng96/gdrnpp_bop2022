@@ -715,7 +715,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
         # here get batched rois
         roi_infos = {}
         # yapf: disable
-        roi_keys = ["scene_im_id", "file_name", "cam", "im_H", "im_W",
+        roi_keys = ["file_name", "cam", "im_H", "im_W",
                     "roi_img", "inst_id", "roi_coord_2d", "roi_coord_2d_rel",
                     "roi_cls", "score", "time", "roi_extent",
                     bbox_key, "bbox_mode", "bbox_center", "roi_wh",
@@ -731,7 +731,6 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
         # "annotations" means detections
         for inst_i, inst_infos in enumerate(dataset_dict["annotations"]):
             # inherent image-level infos
-            roi_infos["scene_im_id"].append(dataset_dict["scene_im_id"])
             roi_infos["file_name"].append(dataset_dict["file_name"])
             roi_infos["im_H"].append(im_H)
             roi_infos["im_W"].append(im_W)
@@ -807,7 +806,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
         for _key in roi_keys:
             if _key in ["roi_img", "roi_coord_2d", "roi_coord_2d_rel", "roi_depth"]:
                 dataset_dict[_key] = torch.as_tensor(np.array(roi_infos[_key])).contiguous()
-            elif _key in ["model_info", "scene_im_id", "file_name"]:
+            elif _key in ["model_info", "file_name"]:
                 # can not convert to tensor
                 dataset_dict[_key] = roi_infos[_key]
             else:
@@ -952,7 +951,6 @@ def build_gdrn_test_loader(cfg, dataset_name, train_objs=None, sampler=None, bat
         DataLoader: a torch DataLoader, that loads the given detection
         dataset, with test-time transformation and batching.
     """
-    dataset_name = dataset_name[0]
     dataset_dicts = get_detection_dataset_dicts(
         [dataset_name],
         filter_empty=False,

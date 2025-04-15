@@ -33,7 +33,7 @@ INPUT = dict(
 
 SOLVER = dict(
     IMS_PER_BATCH=4,
-    TOTAL_EPOCHS=50,  # 10
+    TOTAL_EPOCHS=200,  # 10
     LR_SCHEDULER_NAME="flat_and_anneal",
     ANNEAL_METHOD="cosine",  # "cosine"
     ANNEAL_POINT=0.72,
@@ -133,7 +133,7 @@ VAL = dict(
     SPLIT_TYPE="",
     SCRIPT_PATH="lib/pysixd/scripts/eval_pose_results_more.py",
     TARGETS_FILENAME="",
-    ERROR_TYPES="vsd,mspd,mssd",
+    ERROR_TYPES="mspd,mssd",
     USE_BOP=True,  # whether to use bop toolkit
 )
 

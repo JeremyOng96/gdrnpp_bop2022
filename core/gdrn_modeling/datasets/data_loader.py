@@ -240,7 +240,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
         num = np.inf
         for i, obj_name in enumerate(objs):
             obj_id = data_ref.obj2id[obj_name]
-            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}.ply")
+            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}", f"obj_{obj_id:06d}.ply")
             model = inout.load_ply(model_path, vertex_scale=data_ref.vertex_scale)
             cur_model_points[i] = pts = model["pts"]
             if pts.shape[0] < num:
@@ -275,7 +275,8 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
         cur_extents = {}
         for i, obj_name in enumerate(objs):
             obj_id = data_ref.obj2id[obj_name]
-            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}.ply")
+            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}", f"obj_{obj_id:06d}.ply")
+            print("Get extents for ", model_path)
             model = inout.load_ply(model_path, vertex_scale=data_ref.vertex_scale)
             pts = model["pts"]
             xmin, xmax = np.amin(pts[:, 0]), np.amax(pts[:, 0])
@@ -856,6 +857,7 @@ def build_gdrn_train_loader(cfg, dataset_names):
     Returns:
         an infinite iterator of training data
     """
+    print(dataset_names)
     dataset_dicts = get_detection_dataset_dicts(
         dataset_names,
         filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
@@ -897,6 +899,45 @@ def build_gdrn_train_loader(cfg, dataset_names):
         persistent_workers=cfg.DATALOADER.PERSISTENT_WORKERS,
     )
 
+def build_gdrn_val_loader(cfg, dataset_name, train_objs=None, sampler=None, batch_size=1, pin_memory=False):
+    """Similar to `build_detection_train_loader`. But this function uses the
+    given `dataset_name` argument (instead of the names in cfg), and uses batch
+    size 1.
+
+    Args:
+        cfg:
+        dataset_name (str): a name of the dataset that's available in the DatasetCatalog
+
+    Returns:
+        DataLoader: a torch DataLoader, that loads the given detection
+        dataset, with test-time transformation and batching.
+    """
+
+    dataset_dicts = get_detection_dataset_dicts(
+        [dataset_name[0]],
+        filter_empty=False,
+        proposal_files=[cfg.DATASETS.PROPOSAL_FILES_TEST[list(cfg.DATASETS.TEST).index(dataset_name)]]
+        if cfg.MODEL.LOAD_PROPOSALS
+        else None,
+    )
+
+    dataset = GDRN_Online_DatasetFromList(cfg, split="train", lst=dataset_dicts, copy=False)
+
+    if isinstance(dataset, torchdata.IterableDataset):
+        assert sampler is None, "sampler must be None if dataset is IterableDataset"
+    else:
+        if sampler is None:
+            sampler = InferenceSampler(len(dataset))
+    data_loader = torchdata.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        collate_fn=trivial_batch_collator,
+        pin_memory=pin_memory,
+        num_workers=cfg.DATALOADER.NUM_WORKERS,
+        persistent_workers=cfg.DATALOADER.PERSISTENT_WORKERS,
+    )
+    return data_loader
 
 def build_gdrn_test_loader(cfg, dataset_name, train_objs=None, sampler=None, batch_size=1, pin_memory=False):
     """Similar to `build_detection_train_loader`. But this function uses the
@@ -911,6 +952,7 @@ def build_gdrn_test_loader(cfg, dataset_name, train_objs=None, sampler=None, bat
         DataLoader: a torch DataLoader, that loads the given detection
         dataset, with test-time transformation and batching.
     """
+    dataset_name = dataset_name[0]
     dataset_dicts = get_detection_dataset_dicts(
         [dataset_name],
         filter_empty=False,
@@ -918,23 +960,6 @@ def build_gdrn_test_loader(cfg, dataset_name, train_objs=None, sampler=None, bat
         if cfg.MODEL.LOAD_PROPOSALS
         else None,
     )
-
-    # load test detection results
-    if cfg.MODEL.LOAD_DETS_TEST:
-        det_files = cfg.DATASETS.DET_FILES_TEST
-        assert len(cfg.DATASETS.TEST) == len(det_files)
-        dataset_dicts = load_detections_into_dataset(
-            dataset_name,
-            dataset_dicts,
-            det_file=det_files[cfg.DATASETS.TEST.index(dataset_name)],
-            top_k_per_obj=cfg.DATASETS.DET_TOPK_PER_OBJ,
-            score_thr=cfg.DATASETS.DET_THR,
-            train_objs=train_objs,
-            selected_scenes=cfg.DATASETS.get("EVAL_SCENE_IDS", None),
-        )
-        if cfg.DATALOADER.FILTER_EMPTY_DETS:
-            dataset_dicts = filter_empty_dets(dataset_dicts)
-
     dataset = GDRN_DatasetFromList(cfg, split="test", lst=dataset_dicts, flatten=False)
 
     if isinstance(dataset, torchdata.IterableDataset):

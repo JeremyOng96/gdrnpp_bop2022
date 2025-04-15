@@ -90,6 +90,9 @@ class StreamToLoguru:
     def flush(self):
         pass
 
+    def isatty(self):
+        return False  # Or True if you want wandb progress bars
+
 
 def redirect_sys_output(
     log_level="INFO", caller_names=("apex", "pycocotools", "__main__"), stdout_logger=None, stderr_logger=None

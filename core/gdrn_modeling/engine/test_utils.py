@@ -34,7 +34,7 @@ def save_and_eval_results(cfg, results_all, output_dir, obj_ids=None):
     save_root = output_dir  # eval_path
     split_type_str = f"-{cfg.VAL.SPLIT_TYPE}" if cfg.VAL.SPLIT_TYPE != "" else ""
     mmcv.mkdir_or_exist(save_root)
-    header = "scene_id,im_id,obj_id,score,R,t,time"
+    header = "img_name,obj_id,score,K,R_gt,t_gt,R_est,t_est,time"
     keys = header.split(",")
     result_names = []
     for name, result_list in results_all.items():
@@ -152,6 +152,7 @@ def get_data_ref(dataset_name):
         "hb": "hb",
         "hbs": "hb_bop19",
         "itodd": "itodd",
+        "neura_object": "neura_object"
     }
     ref_key = ref_key_dict[dataset_name]
     return ref.__dict__[ref_key]
@@ -361,17 +362,18 @@ def load_and_print_val_scores_tab(
         "tyol": 15,
         "ycbv": 15,
         "ycbvposecnn": 15,
+        "neura_object": 15,
     }
     ntop = cfg.VAL.N_TOP
     val_dataset_name = cfg.VAL.DATASET_NAME
     vsd_delta = vsd_deltas[val_dataset_name]
     data_ref = get_data_ref(val_dataset_name)
 
-    if any(is_weighted_average_metric(err_type) for err_type in error_types):
-        obj_nums_dict = get_object_nums_from_targets(osp.join(data_ref.dataset_root, cfg.VAL.TARGETS_FILENAME))
-    else:
-        obj_nums_dict = None
-
+    # if any(is_weighted_average_metric(err_type) for err_type in error_types):
+    #     obj_nums_dict = get_object_nums_from_targets(osp.join(data_ref.dataset_root, cfg.VAL.TARGETS_FILENAME))
+    # else:
+    #     obj_nums_dict = None
+    obj_nums_dict = None
     vsd_taus = list(np.arange(0.05, 0.51, 0.05))
     # visib_gt_min = 0.1
 
@@ -386,8 +388,10 @@ def load_and_print_val_scores_tab(
                     misc.get_error_signature(error_type, ntop, vsd_delta=vsd_delta, vsd_tau=vsd_tau)
                     for vsd_tau in vsd_taus
                 ]
+                logger.debug(f"error")
             else:
                 error_signs = [misc.get_error_signature(error_type, ntop)]
+                logger.info(error_signs)
             score_roots = [osp.join(eval_root, result_name, error_sign) for error_sign in error_signs]
 
             for score_root in score_roots:

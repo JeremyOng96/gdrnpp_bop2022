@@ -29,7 +29,6 @@ from detectron2.utils.logger import log_first_n
 from lib.pysixd import inout, misc
 from lib.utils.mask_utils import cocosegm2mask, get_edge
 from lib.vis_utils.image import grid_show, heatmap
-from .dataset_factory import register_datasets
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +135,7 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
                 enabled, data loader workers can use shared RAM from master
                 process instead of making a copy.
         """
+
         self.resize_augmentation = self.augmentation = build_gdrn_augmentation(cfg, is_train=(split == "train"))
         if cfg.INPUT.COLOR_AUG_PROB > 0 and cfg.INPUT.COLOR_AUG_TYPE.lower() == "ssd":
             self.augmentation.append(ColorAugSSDTransform(img_format=cfg.INPUT.FORMAT))
@@ -233,7 +233,7 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         num = np.inf
         for i, obj_name in enumerate(objs):
             obj_id = data_ref.obj2id[obj_name]
-            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}.ply")
+            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}", f"obj_{obj_id:06d}.ply")
             model = inout.load_ply(model_path, vertex_scale=data_ref.vertex_scale)
             cur_model_points[i] = pts = model["pts"]
             if pts.shape[0] < num:
@@ -268,7 +268,8 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         cur_extents = {}
         for i, obj_name in enumerate(objs):
             obj_id = data_ref.obj2id[obj_name]
-            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}.ply")
+
+            model_path = osp.join(data_ref.model_dir, f"obj_{obj_id:06d}",  f"obj_{obj_id:06d}.ply")
             model = inout.load_ply(model_path, vertex_scale=data_ref.vertex_scale)
             pts = model["pts"]
             xmin, xmax = np.amin(pts[:, 0]), np.amax(pts[:, 0])
@@ -297,7 +298,7 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         loaded_models_info = data_ref.get_models_info()
         for i, obj_name in enumerate(objs):
             obj_id = data_ref.obj2id[obj_name]
-            model_info = loaded_models_info[str(obj_id)]
+            model_info = loaded_models_info[obj_id]
             if "symmetries_discrete" in model_info or "symmetries_continuous" in model_info:
                 sym_transforms = misc.get_symmetry_transformations(model_info, max_sym_disc_step=0.01)
                 sym_info = np.array([sym["R"] for sym in sym_transforms], dtype=np.float32)
@@ -644,7 +645,7 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         # here get batched rois
         roi_infos = {}
         # yapf: disable
-        roi_keys = ["scene_im_id", "file_name", "cam", "im_H", "im_W",
+        roi_keys = ["file_name", "cam", "im_H", "im_W",
                     "roi_img", "inst_id", "roi_coord_2d", "roi_coord_2d_rel",
                     "roi_cls", "score", "time", "roi_extent",
                     bbox_key, "bbox_mode", "bbox_center", "roi_wh",
@@ -660,7 +661,6 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         # "annotations" means detections
         for inst_i, inst_infos in enumerate(dataset_dict["annotations"]):
             # inherent image-level infos
-            roi_infos["scene_im_id"].append(dataset_dict["scene_im_id"])
             roi_infos["file_name"].append(dataset_dict["file_name"])
             roi_infos["im_H"].append(im_H)
             roi_infos["im_W"].append(im_W)
@@ -735,7 +735,7 @@ class GDRN_Online_DatasetFromList(Base_DatasetFromList):
         for _key in roi_keys:
             if _key in ["roi_img", "roi_coord_2d", "roi_coord_2d_rel", "roi_depth"]:
                 dataset_dict[_key] = torch.as_tensor(np.array(roi_infos[_key])).contiguous()
-            elif _key in ["model_info", "scene_im_id", "file_name"]:
+            elif _key in ["model_info", "file_name"]:
                 # can not convert to tensor
                 dataset_dict[_key] = roi_infos[_key]
             else:

@@ -1,6 +1,9 @@
 """Register datasets in this file will be imported in project root to register
 the datasets."""
 import logging
+import sys
+PROJ_ROOT = "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/"
+sys.path.insert(0, PROJ_ROOT)
 import os
 import os.path as osp
 import mmcv
@@ -8,6 +11,7 @@ import detectron2.utils.comm as comm
 import ref
 from detectron2.data import DatasetCatalog, MetadataCatalog
 from core.gdrn_modeling.datasets import (
+    neura_object,
     lm_pbr,
     lmo_bop_test,
     ycbv_pbr,
@@ -39,6 +43,7 @@ __all__ = [
     "get_available_datasets",
 ]
 _DSET_MOD_NAMES = [
+    "neura_object",
     "lm_pbr",
     "lmo_bop_test",
     "ycbv_pbr",
@@ -80,6 +85,7 @@ def get_available_datasets(mod_name):
 def register_datasets_in_cfg(cfg):
     for split in [
         "TRAIN",
+        "VAL",
         "TEST",
         "SS_TRAIN",
         "TEST_DEBUG",

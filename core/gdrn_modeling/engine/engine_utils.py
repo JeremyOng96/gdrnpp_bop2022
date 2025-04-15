@@ -10,7 +10,7 @@ from core.utils.data_utils import xyz_to_region_batch
 from lib.vis_utils.image import grid_show
 from core.utils.utils import get_emb_show
 from lib.pysixd import misc
-
+from pathlib import Path
 
 def batch_data(cfg, data, renderer=None, device="cuda", phase="train"):
     if phase != "train":
@@ -132,6 +132,7 @@ def batch_data_train_online(cfg, data, renderer, device="cuda"):
     if net_cfg.XYZ_BP:
         pc_cam_tensor = torch.cuda.FloatTensor(out_res, out_res, 4, device=device).detach()
         roi_depth_batch = torch.empty(bs, out_res, out_res, dtype=torch.float32, device=device)
+
         for _i in range(bs):
             pose = np.hstack(
                 [
@@ -139,6 +140,7 @@ def batch_data_train_online(cfg, data, renderer, device="cuda"):
                     batch["trans"][_i].detach().cpu().numpy().reshape(3, 1),
                 ]
             )
+            
             renderer.render(
                 [int(batch["roi_cls"][_i])],
                 [pose],
@@ -154,7 +156,7 @@ def batch_data_train_online(cfg, data, renderer, device="cuda"):
             fmt="BHWC",
         )
     else:  # directly rendering xyz
-        pc_obj_tensor = torch.cuda.FloatTensor(out_res, out_res, 4, device=device).detach()  # xyz
+        pc_obj_tensor = torch.empty((out_res, out_res, 4), dtype=torch.float32, device=device).detach()
         roi_xyz_batch = torch.empty(bs, out_res, out_res, 3, dtype=torch.float32, device=device)
         for _i in range(bs):
             pose = np.hstack(
@@ -212,7 +214,6 @@ def batch_data_train_online(cfg, data, renderer, device="cuda"):
 
 def batch_data_test(cfg, data, device="cuda"):
     batch = {}
-
     # yapf: disable
     roi_keys = ["im_H", "im_W",
                 "roi_img", "inst_id", "roi_coord_2d", "roi_coord_2d_rel",
@@ -271,12 +272,12 @@ def get_renderer(cfg, data_ref, obj_names, gpu_id=None):
     model_dir = data_ref.model_dir
 
     obj_ids = [data_ref.obj2id[_obj] for _obj in obj_names]
-    model_paths = [osp.join(model_dir, "obj_{:06d}.ply".format(obj_id)) for obj_id in obj_ids]
-
+    # model_paths = [osp.join(model_dir, "obj_{:06d}.ply".format(obj_id)) for obj_id in obj_ids]
+    model_paths = [str(f) for f in sorted(list(Path(model_dir).rglob("*.ply")))]
+    print(f"In renderer: {model_paths}")
     texture_paths = None
     if data_ref.texture_paths is not None:
-        texture_paths = [osp.join(model_dir, "obj_{:06d}.png".format(obj_id)) for obj_id in obj_ids]
-
+        texture_paths = [str(f) for f in sorted(list(Path(model_dir).rglob("*.png")))]
     ren = EGLRenderer(
         model_paths,
         texture_paths=texture_paths,
@@ -338,19 +339,19 @@ def vis_batch(cfg, batch, phase="train"):
     # yapf: disable
     for i in range(n_obj):
         vis_dict = {"roi_img": (batch['roi_img'][i].detach().cpu().numpy().transpose(1, 2, 0) * 255).astype('uint8')[:,:,::-1]}
-        if phase == 'train':
-            vis_dict['roi_mask_trunc'] = batch['roi_mask_trunc'][i].detach().cpu().numpy()
-            vis_dict['roi_mask_visib'] = batch['roi_mask_visib'][i].detach().cpu().numpy()
-            vis_dict['roi_mask_obj'] = batch['roi_mask_obj'][i].detach().cpu().numpy()
+        # if phase == 'train':
+        vis_dict['roi_mask_trunc'] = batch['roi_mask_trunc'][i].detach().cpu().numpy()
+        vis_dict['roi_mask_visib'] = batch['roi_mask_visib'][i].detach().cpu().numpy()
+        vis_dict['roi_mask_obj'] = batch['roi_mask_obj'][i].detach().cpu().numpy()
 
-            vis_dict['roi_xyz'] = get_emb_show(batch['roi_xyz'][i].detach().cpu().numpy().transpose(1, 2, 0))
+        vis_dict['roi_xyz'] = get_emb_show(batch['roi_xyz'][i].detach().cpu().numpy().transpose(1, 2, 0))
 
-            if "roi_depth" in batch:
-                vis_dict['roi_depth'] = get_emb_show(batch['roi_depth'][i].detach().cpu().numpy().transpose(1, 2, 0)[:, :, -1])
+            # if "roi_depth" in batch:
+            #     vis_dict['roi_depth'] = get_emb_show(batch['roi_depth'][i].detach().cpu().numpy().transpose(1, 2, 0)[:, :, -1])
 
-            roi_xyz_img_size = mmcv.imresize_like((vis_dict['roi_xyz'] * 255).astype("uint8"), vis_dict["roi_img"])
+        roi_xyz_img_size = mmcv.imresize_like((vis_dict['roi_xyz'] * 255).astype("uint8"), vis_dict["roi_img"])
 
-            vis_dict["roi_img_xyz"] = (vis_dict["roi_img"] * 0.5  + roi_xyz_img_size * 0.5).astype("uint8")
+        vis_dict["roi_img_xyz"] = (vis_dict["roi_img"] * 0.5  + roi_xyz_img_size * 0.5).astype("uint8")
 
         show_titles = list(vis_dict.keys())
         show_ims = list(vis_dict.values())

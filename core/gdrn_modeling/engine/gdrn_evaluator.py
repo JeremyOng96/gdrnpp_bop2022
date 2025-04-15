@@ -58,6 +58,7 @@ class GDRN_Evaluator(DatasetEvaluator):
         self.model_paths = [
             osp.join(self.data_ref.model_eval_dir, "obj_{:06d}.ply".format(obj_id)) for obj_id in self.obj_ids
         ]
+        self.model_paths = [str(f) for f in sorted(list(Path(self.data_ref.model_eval_dir).rglob("obj_*.ply")))]
         self.models_3d = [
             inout.load_ply(model_path, vertex_scale=self.data_ref.vertex_scale) for model_path in self.model_paths
         ]

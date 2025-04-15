@@ -26,7 +26,7 @@ from detectron2.evaluation import (
 from detectron2.data.common import AspectRatioGroupedDataset
 from detectron2.data import MetadataCatalog
 from pytorch_lightning.lite import LightningLite  # import LightningLite
-
+from collections import defaultdict
 from lib.utils.setup_logger import log_first_n
 from lib.utils.utils import dprint
 from lib.vis_utils.image import grid_show, vis_bbox_opencv
@@ -38,13 +38,13 @@ from core.utils.my_checkpoint import MyCheckpointer
 from core.utils.my_writer import MyCommonMetricPrinter, MyJSONWriter, MyTensorboardXWriter
 from core.utils.utils import get_emb_show
 from core.utils.data_utils import denormalize_image
-from core.gdrn_modeling.datasets.data_loader import build_gdrn_train_loader, build_gdrn_test_loader
+from core.gdrn_modeling.datasets.data_loader import build_gdrn_train_loader, build_gdrn_val_loader, build_gdrn_test_loader
 
 from .engine_utils import batch_data, get_out_coor, get_out_mask
 from .gdrn_evaluator import gdrn_inference_on_dataset, GDRN_Evaluator, gdrn_save_result_of_dataset
 from .gdrn_custom_evaluator import GDRN_EvaluatorCustom
 import ref
-
+import wandb
 
 logger = logging.getLogger(__name__)
 
@@ -162,10 +162,84 @@ class GDRN_Lite(LightningLite):
         if len(results) == 1:
             results = list(results.values())[0]
         return results
+    
+    def do_val(self, cfg, model, renderer=None):
+        """
+        Validate using a subset of the validation data (10% by default)
+        Args:
+            cfg: Configuration object
+            model: Model to validate
+            renderer: Optional renderer
+        Returns:
+            Dictionary of accumulated losses
+        """
+        # Initialize metadata and reference data
+        dataset_meta = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
+        data_ref = ref.__dict__[dataset_meta.ref_key]
+        obj_names = dataset_meta.objs
+
+        # Setup data loader ===================================
+        val_dset_names = cfg.DATASETS.VAL
+        data_loader = build_gdrn_val_loader(cfg, val_dset_names)
+        
+        # Initialize loss tracking
+        cumulative_loss_dict = defaultdict(float)
+        
+        # Validation loop
+        with torch.no_grad():
+            for batch_idx, data in enumerate(data_loader):
+                batch = batch_data(cfg, data, renderer=renderer)
+                
+                # Prepare input
+                inp = torch.cat([batch["roi_img"], batch["roi_depth"]], dim=1) if cfg.INPUT.WITH_DEPTH else batch["roi_img"]
+                
+                # Forward pass
+                out_dict, loss_dict = model(
+                    inp,
+                    gt_xyz=batch.get("roi_xyz", None),
+                    gt_xyz_bin=batch.get("roi_xyz_bin", None),
+                    gt_mask_trunc=batch["roi_mask_trunc"],
+                    gt_mask_visib=batch["roi_mask_visib"],
+                    gt_mask_full=batch.get("roi_mask_full", None),
+                    gt_mask_obj=batch["roi_mask_obj"],
+                    gt_region=batch.get("roi_region", None),
+                    gt_ego_rot=batch.get("ego_rot", None),
+                    gt_trans=batch.get("trans", None),
+                    gt_trans_ratio=batch["roi_trans_ratio"],
+                    gt_points=batch.get("roi_points", None),
+                    sym_infos=batch.get("sym_info", None),
+                    roi_classes=batch["roi_cls"],
+                    roi_cams=batch["roi_cam"],
+                    roi_whs=batch["roi_wh"],
+                    roi_centers=batch["roi_center"],
+                    resize_ratios=batch["resize_ratio"],
+                    roi_coord_2d=batch.get("roi_coord_2d", None),
+                    roi_coord_2d_rel=batch.get("roi_coord_2d_rel", None),
+                    roi_extents=batch.get("roi_extent", None),
+                    do_loss=True,
+                )
+                
+                # Accumulate losses
+                for k, v in loss_dict.items():
+                    cumulative_loss_dict[k] += v.item()  # Convert to Python float
+                cumulative_loss_dict["total_loss"] += sum(loss_dict.values()).item()
+
+        # Average losses over number of batches
+        num_batches = batch_idx + 1
+        for k in cumulative_loss_dict:
+            cumulative_loss_dict[k] /= num_batches
+            
+        return dict(cumulative_loss_dict)
 
     def do_train(self, cfg, args, model, optimizer, renderer=None, resume=False):
         model.train()
+        # initialize wandb
 
+        wandb.init(
+            project = "Neura 6DoF Pose Estimation",
+            name = "Neura_Objects_GDRNPP",
+            config = cfg,
+        )
         # some basic settings =========================
         dataset_meta = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
         data_ref = ref.__dict__[dataset_meta.ref_key]
@@ -313,6 +387,22 @@ class GDRN_Lite(LightningLite):
                     do_loss=True,
                 )
                 losses = sum(loss_dict.values())
+
+                # track training loss using wandb
+                if wandb.run is not None:
+                    wandb.log({
+                        'val_total_loss': losses,
+                        'val_loss_coor_x': loss_dict['loss_coor_x'],
+                        'val_loss_coor_y': loss_dict['loss_coor_y'],
+                        'val_loss_coor_z': loss_dict['loss_coor_z'],
+                        'val_loss_visib_mask': loss_dict['loss_mask'],
+                        'loss_full_mask': loss_dict['loss_mask_full'],
+                        'loss_region': loss_dict['loss_region'],
+                        'loss_PM_R': loss_dict['loss_PM_R'],
+                        'loss_centroid': loss_dict['loss_centroid'],
+                        'loss_z': loss_dict['loss_z']
+                    })
+
                 assert torch.isfinite(losses).all(), loss_dict
 
                 if self.is_global_zero:
@@ -351,14 +441,27 @@ class GDRN_Lite(LightningLite):
                     last_evaled_epoch = epoch
                     if ema is not None:
                         ema.update_attr(model)
-                        self.do_test(
+                        val_loss_dict = self.do_val(
                             cfg,
                             model=ema.ema.module if hasattr(ema.ema, "module") else ema.ema,
-                            epoch=epoch,
-                            iteration=iteration,
+                            renderer=renderer
                         )
                     else:
-                        self.do_test(cfg, model, epoch=epoch, iteration=iteration)
+                        val_loss_dict = self.do_val(cfg, model, renderer=renderer)
+
+                    if wandb.run is not None:
+                        wandb.log({
+                            'total_loss': val_loss_dict['total_loss'],
+                            'loss_coor_x': val_loss_dict['loss_coor_x'],
+                            'loss_coor_y': val_loss_dict['loss_coor_y'],
+                            'loss_coor_z': val_loss_dict['loss_coor_z'],
+                            'loss_visib_mask': val_loss_dict['loss_mask'],
+                            'loss_full_mask': val_loss_dict['loss_mask_full'],
+                            'loss_region': val_loss_dict['loss_region'],
+                            'loss_PM_R': val_loss_dict['loss_PM_R'],
+                            'loss_centroid': val_loss_dict['loss_centroid'],
+                            'loss_z': val_loss_dict['loss_z']
+                        })
                     # Compared to "train_net.py", the test results are not dumped to EventStorage
                     self.barrier()
 

@@ -4,6 +4,7 @@ core/csrc/uncertainty_pnp/ceres/
 # output dir
 /data
 /datasets
+/wandb
 *.so.*
 *.tar.gz
 *.egg-info*

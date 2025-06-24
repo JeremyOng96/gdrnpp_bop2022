@@ -3,10 +3,10 @@ import logging
 import os
 import os.path as osp
 import sys
-
-__file__ = os.getcwd()
-cur_dir = osp.dirname(osp.abspath(__file__))
-PROJ_ROOT = "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/"
+from pathlib import Path
+cur_dir = Path(osp.dirname(osp.abspath(__file__))).parent.parent.parent
+PROJ_ROOT = cur_dir
+print("Project root: ", PROJ_ROOT)
 sys.path.insert(0, PROJ_ROOT)
 
 import time
@@ -41,19 +41,13 @@ import glob
 import h5py
 import json
 from typing import List
-from pathlib import Path
 from core.gdrn_modeling.datasets.data_loader_online import GDRN_Online_DatasetFromList
 from lib.utils.config_utils import try_get_key
 
 
 DATASETS_ROOT = osp.join(PROJ_ROOT, f"data/BOP_DATASETS/neura_objects") 
 logger = logging.getLogger(__name__)
-
-NEURA_OBJECTS = ref.neura_object.objects # if neura_objects in the ref file is edited, please delete pycache and setup the module again
-
-DATASETS_ROOT = osp.join(PROJ_ROOT, f"data/BOP_DATASETS/neura_objects") 
-logger = logging.getLogger(__name__)
-
+logger.info("Data root: ", DATASETS_ROOT)
 NEURA_OBJECTS = ref.neura_object.objects # if neura_objects in the ref file is edited, please delete pycache and setup the module again
 
 NEURA_CFG = dict(
@@ -69,7 +63,7 @@ NEURA_CFG = dict(
         height=480,
         width=640,
         cache_dir=osp.join(DATASETS_ROOT, ".cache"),
-        use_cache=True,
+        use_cache=False,
         num_to_load=-1,
         filter_invalid=True,
         ref_key="neura_object",  # make sure this has the same name as the file in reference. i.e. ref/neura_object.py as this will be used to reference the metadata in detectron2
@@ -86,7 +80,7 @@ NEURA_CFG = dict(
         height=480,
         width=640,
         cache_dir=osp.join(DATASETS_ROOT, ".cache"),
-        use_cache=True,
+        use_cache=False,
         num_to_load=-1,
         filter_invalid=True,
         ref_key="neura_object",  # make sure this has the same name as the file in reference. i.e. ref/neura_object.py as this will be used to reference the metadata in detectron2
@@ -103,7 +97,7 @@ NEURA_CFG = dict(
         height=480,
         width=640,
         cache_dir=osp.join(DATASETS_ROOT, ".cache"),
-        use_cache=True,
+        use_cache=False,
         num_to_load=-1,
         filter_invalid=True,
         ref_key="neura_object",  # make sure this has the same name as the file in reference. i.e. ref/neura_object.py as this will be used to reference the metadata in detectron2

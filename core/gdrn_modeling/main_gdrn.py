@@ -8,10 +8,12 @@ import sys
 from setproctitle import setproctitle
 import torch
 import torch.distributed as dist
+from torch.utils.data import DataLoader
 
 # from torch.nn.parallel import DistributedDataParallel
 
 # from detectron2.engine import launch
+from detectron2.structures import BoxMode
 from detectron2.data import MetadataCatalog
 from mmcv import Config
 import cv2
@@ -34,6 +36,7 @@ from lib.utils.utils import iprint
 from lib.utils.setup_logger import setup_my_logger
 from lib.utils.time_utils import get_time_str
 import ref
+import numpy as np
 
 from core.gdrn_modeling.datasets.dataset_factory import register_datasets_in_cfg
 from core.gdrn_modeling.engine.engine_utils import get_renderer
@@ -47,9 +50,11 @@ from core.gdrn_modeling.models import (
     GDRN_Dstream_double_mask,
 )  # noqa
 
+from core.gdrn_modeling.datasets.data_loader import GDRN_DatasetFromList, build_gdrn_test_loader
+from core.utils.dataset_utils import trivial_batch_collator 
+from core.gdrn_modeling.engine.engine_utils import batch_data_inference_roi, batch_data_test
 
 logger = logging.getLogger("detectron2")
-
 
 def setup(args):
     """Create configs and perform basic setups."""
@@ -135,12 +140,13 @@ def setup(args):
     return cfg
 
 
+
 class Lite(GDRN_Lite):
     def set_my_env(self, args, cfg):
         my_default_setup(cfg, args)  # will set os.environ["PYTHONHASHSEED"]
         seed_everything(int(os.environ["PYTHONHASHSEED"]), workers=True)
         setup_for_distributed(is_master=self.is_global_zero)
-
+        
     def run(self, args, cfg):
         self.set_my_env(args, cfg)
 
@@ -188,23 +194,104 @@ class Lite(GDRN_Lite):
             torch.multiprocessing.set_sharing_strategy("file_system")
         return self.do_test(cfg, model)
 
+class Inference(Lite):
+    def __init__(self, args, cfg):
+        super().__init__(
+            accelerator = 'gpu',
+            strategy = args.strategy,
+            devices = args.num_gpus,
+            num_nodes = args.num_machines,
+            precision = 16 if cfg.SOLVER.AMP.ENABLED else 32,
+        )
+        self.model = None
+        self.cfg = cfg
+        self.init_model(args, cfg)
+        self.setup(self.model)
+        self.objects = ref.neura_object.objects
+        MyCheckpointer(self.model, save_dir=cfg.OUTPUT_DIR, prefix_to_remove="_module.").resume_or_load(args.model_path, resume=False)
+        logger.info(self.model)
+        self.model_info = ref.__dict__["neura_object"].get_models_info()
+        logger.info(self.model_info)
+        MetadataCatalog.get("neura_object").set(
+            ref_key="neura_object",
+            objs= self.objects,
+        )
+    def predict(self, image, bbox, obj_id, depth = None):
+        h, w, c = image.shape
+        camera_matrix = np.array([[528.466,     0.,         325.0393],
+                                  [0.,      530.59326,      240.08675],
+                                  [0,            0,         1]])
+        
+        bbox_2d = np.asarray(bbox).reshape(1,4)
+        data = [{
+            "dataset_name": "neura_object",
+            "height": h,
+            "width": w,
+            "cam": camera_matrix,
+            "image": image,
+            "img_type": "real",
+            "depth": depth,
+            "annotations": [{
+                "category_id": obj_id,
+                "bbox": bbox_2d,
+                "bbox_mode": BoxMode.XYXY_ABS,
+                "model_info": self.model_info[obj_id]
+            }]
+        }]
+
+        dataset = GDRN_DatasetFromList(self.cfg, split="inference", lst=data, flatten=False)
+        data_loader = DataLoader(
+            dataset,
+            batch_size=1,
+            sampler=None,
+            collate_fn=trivial_batch_collator,
+        )
+        data = next(iter(data_loader))
+        with torch.no_grad():
+            batch = batch_data_test(self.cfg, data)
+            logger.info(batch)
+            output = self.model(
+                batch.get("roi_img", None),
+                sym_infos=batch.get("sym_info", None),
+                roi_classes=batch["roi_cls"],
+                roi_cams=batch["roi_cam"],
+                roi_whs=batch["roi_wh"],
+                roi_centers=batch["roi_center"],
+                resize_ratios=batch["resize_ratio"],
+                roi_coord_2d=batch.get("roi_coord_2d", None),
+                roi_coord_2d_rel=batch.get("roi_coord_2d_rel", None),
+                roi_extents=batch.get("roi_extent", None),
+            )
+
+        logger.info(f"Rotation output: {output['rot']}, translation output: {output['trans']}")
+        return output
+
+    def init_model(self, args, cfg):
+        self.set_my_env(args, cfg)
+        model, optimizer = eval(cfg.MODEL.POSE_NET.NAME).build_model_optimizer(cfg, is_test=args.eval_only)
+        self.model = model
 
 @loguru_logger.catch
 def main(args):
+    from pathlib import Path
     cfg = setup(args)
+    # logger.info(f"start to train with {args.num_machines} nodes and {args.num_gpus} GPUs")
+    # if args.num_gpus > 1 and args.strategy is None:
+    #     args.strategy = "ddp"
+    # Lite(
+    #     accelerator="gpu",
+    #     strategy=args.strategy,
+    #     devices=args.num_gpus,
+    #     num_nodes=args.num_machines,
+    #     precision=16 if cfg.SOLVER.AMP.ENABLED else 32,
+    # ).run(args, cfg)
 
-    logger.info(f"start to train with {args.num_machines} nodes and {args.num_gpus} GPUs")
-    if args.num_gpus > 1 and args.strategy is None:
-        args.strategy = "ddp"
-    Lite(
-        accelerator="gpu",
-        strategy=args.strategy,
-        devices=args.num_gpus,
-        num_nodes=args.num_machines,
-        precision=16 if cfg.SOLVER.AMP.ENABLED else 32,
-    ).run(args, cfg)
-
-
+    image = cv2.imread(str(Path(cur_dir).parent.parent / "data/BOP_DATASETS/neura_objects/test/rgb/scene_000000_frame_000000.jpg"))
+    bbox = np.array([[374, 224,  61,  78]])
+    obj_id = 2
+    inference = Inference(args, cfg)
+    inference.predict(image, bbox, obj_id)
+    
 if __name__ == "__main__":
     import resource
 
@@ -222,6 +309,12 @@ if __name__ == "__main__":
         default=None,
         type=str,
         help="the strategy for parallel training: dp | ddp | ddp_spawn | deepspeed | ddp_sharded",
+    )
+    parser.add_argument(
+        "--model_path",
+        default=None,
+        type=str,
+        help="path to model weights"
     )
     args = parser.parse_args()
     iprint("Command Line Args: {}".format(args))

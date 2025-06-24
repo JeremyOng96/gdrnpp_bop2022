@@ -35,7 +35,7 @@ from lib.vis_utils.image import grid_show, vis_image_bboxes_cv2
 
 from .engine_utils import get_out_coor, get_out_mask
 
-PROJ_ROOT = osp.normpath(osp.join(cur_dir, "../../.."))
+PROJ_ROOT = ref.neura_object.PROJ_ROOT # I think this is useless and can be removed later
 
 
 class GDRN_EvaluatorCustom(DatasetEvaluator):

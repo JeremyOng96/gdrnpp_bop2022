@@ -288,7 +288,7 @@ def get_renderer(cfg, data_ref, obj_names, gpu_id=None):
         height=cfg.MODEL.POSE_NET.OUTPUT_RES,
         width=cfg.MODEL.POSE_NET.OUTPUT_RES,
         gpu_id=gpu_id,
-        use_cache=True,
+        use_cache=False,
     )
     return ren
 

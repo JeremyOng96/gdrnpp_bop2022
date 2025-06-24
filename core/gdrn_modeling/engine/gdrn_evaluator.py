@@ -271,6 +271,9 @@ class GDRN_Evaluator(DatasetEvaluator):
             json_results = []
             for inst_i in range(len(_input["roi_img"])):
                 out_i += 1
+                name, ext = os.path.splitext(_input["file_name"][inst_i])
+                file_name = f"{name}_{i:06d}{ext}" # add random integer to avoid duplicate file names
+
                 bbox_center_i = _input["bbox_center"][inst_i]
                 cx_i, cy_i = bbox_center_i
                 scale_i = _input["scale"][inst_i]
@@ -279,7 +282,6 @@ class GDRN_Evaluator(DatasetEvaluator):
                 im_H = _input["im_H"][inst_i].item()
                 im_W = _input["im_W"][inst_i].item()
 
-                scene_im_id_split = _input["scene_im_id"][inst_i].split("/")
                 K = _input["cam"][inst_i].cpu().numpy().copy()
 
                 roi_label = _input["roi_cls"][inst_i]  # 0-based label
@@ -289,8 +291,6 @@ class GDRN_Evaluator(DatasetEvaluator):
                     continue
 
                 # scene_id = int(scene_im_id_split[0])
-                scene_id = scene_im_id_split[0]
-                im_id = int(scene_im_id_split[1])
                 obj_id = self.data_ref.obj2id[cls_name]
 
                 # get pose
@@ -309,6 +309,11 @@ class GDRN_Evaluator(DatasetEvaluator):
 
                 rot_est_net = out_rots[out_i]
                 trans_est_net = out_transes[out_i]
+                pose_gt = _input['annotations'][0]['pose'] # assume only one annotation per image
+                # get pose_est
+                rot_est = out_rots[out_i]
+                trans_est = out_transes[out_i]
+                pose_est = np.hstack([rot_est, trans_est.reshape(3, 1)])
 
                 num_points = len(img_points)
                 if num_points >= 4:
@@ -364,7 +369,7 @@ class GDRN_Evaluator(DatasetEvaluator):
 
                 json_results.extend(
                     self.pose_prediction_to_json(
-                        pose_est, scene_id, im_id, obj_id=obj_id, score=score, pose_time=output["time"], K=K
+                        pose_gt, pose_est, file_name, obj_id=obj_id, score=score, pose_time=output["time"], K=K
                     )
                 )
 
@@ -672,7 +677,6 @@ class GDRN_Evaluator(DatasetEvaluator):
         }
         results.append(result)
         return results
-
 
 def gdrn_inference_on_dataset(cfg, model, data_loader, evaluator, amp_test=False):
     """Run model on the data_loader and evaluate the metrics with evaluator.

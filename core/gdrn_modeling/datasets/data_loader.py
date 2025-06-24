@@ -210,6 +210,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
 
         dset_meta = MetadataCatalog.get(dataset_name)
         ref_key = dset_meta.ref_key
+        logger.info(f"Dataset metadata: {dset_meta}, ref_key: {ref_key}")
         data_ref = ref.__dict__[ref_key]
         objs = dset_meta.objs
         cfg = self.cfg
@@ -232,6 +233,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
 
         dset_meta = MetadataCatalog.get(dataset_name)
         ref_key = dset_meta.ref_key
+        logger.info(f"Dataset metadata: {dset_meta}, ref_key: {ref_key}")
         data_ref = ref.__dict__[ref_key]
         objs = dset_meta.objs
         cfg = self.cfg
@@ -260,6 +262,8 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
             return self.extents[dataset_name]
 
         dset_meta = MetadataCatalog.get(dataset_name)
+        ref_key = dset_meta.ref_key
+        logger.info(f"Dataset metadata: {dset_meta}, ref_key: {ref_key}")
         try:
             ref_key = dset_meta.ref_key
         except:
@@ -297,6 +301,7 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
 
         dset_meta = MetadataCatalog.get(dataset_name)
         ref_key = dset_meta.ref_key
+        logger.info(f"Dataset metadata: {dset_meta}, ref_key: {ref_key}")
         data_ref = ref.__dict__[ref_key]
         objs = dset_meta.objs
         cfg = self.cfg
@@ -748,6 +753,173 @@ class GDRN_DatasetFromList(Base_DatasetFromList):
 
             # extent
             roi_extent = self._get_extents(dataset_name)[roi_cls]
+            roi_infos["roi_extent"].append(roi_extent)
+
+            # TODO: adjust amodal bbox here
+            bbox = BoxMode.convert(inst_infos[bbox_key], inst_infos["bbox_mode"], BoxMode.XYXY_ABS)
+            bbox = np.array(transforms.apply_box([bbox])[0])
+            roi_infos[bbox_key].append(bbox)
+            roi_infos["bbox_mode"].append(BoxMode.XYXY_ABS)
+            x1, y1, x2, y2 = bbox
+            bbox_center = np.array([0.5 * (x1 + x2), 0.5 * (y1 + y2)])
+            bw = max(x2 - x1, 1)
+            bh = max(y2 - y1, 1)
+            scale = max(bh, bw) * cfg.INPUT.DZI_PAD_SCALE
+            scale = min(scale, max(im_H, im_W)) * 1.0
+
+            roi_infos["bbox_center"].append(bbox_center.astype("float32"))
+            roi_infos["scale"].append(scale)
+            roi_wh = np.array([bw, bh], dtype=np.float32)
+            roi_infos["roi_wh"].append(roi_wh)
+            roi_infos["resize_ratio"].append(out_res / scale)
+
+            # CHW, float32 tensor
+            # roi_image
+            roi_img = crop_resize_by_warp_affine(
+                image, bbox_center, scale, input_res, interpolation=cv2.INTER_LINEAR
+            ).transpose(2, 0, 1)
+
+            roi_img = self.normalize_image(cfg, roi_img)
+            roi_infos["roi_img"].append(roi_img.astype("float32"))
+
+            # roi_depth
+            if self.with_depth:
+                roi_depth = crop_resize_by_warp_affine(
+                    depth, bbox_center, scale, input_res, interpolation=cv2.INTER_NEAREST
+                )
+                if depth_ch == 1:
+                    roi_depth = roi_depth.reshape(1, input_res, input_res)
+                else:
+                    roi_depth = roi_depth.transpose(2, 0, 1)
+                roi_infos["roi_depth"].append(roi_depth.astype("float32"))
+
+            # roi_coord_2d
+            roi_coord_2d = crop_resize_by_warp_affine(
+                coord_2d, bbox_center, scale, out_res, interpolation=cv2.INTER_LINEAR
+            ).transpose(
+                2, 0, 1
+            )  # HWC -> CHW
+            roi_infos["roi_coord_2d"].append(roi_coord_2d.astype("float32"))
+
+            if net_cfg.PNP_NET.COORD_2D_TYPE == "rel":
+                # roi_coord_2d_rel
+                roi_coord_2d_rel = (
+                    bbox_center.reshape(2, 1, 1) - roi_coord_2d * np.array([im_W, im_H]).reshape(2, 1, 1)
+                ) / scale
+                roi_infos["roi_coord_2d_rel"].append(roi_coord_2d_rel.astype("float32"))
+
+        for _key in roi_keys:
+            if _key in ["roi_img", "roi_coord_2d", "roi_coord_2d_rel", "roi_depth"]:
+                dataset_dict[_key] = torch.as_tensor(np.array(roi_infos[_key])).contiguous()
+            elif _key in ["model_info", "file_name"]:
+                # can not convert to tensor
+                dataset_dict[_key] = roi_infos[_key]
+            else:
+                if isinstance(roi_infos[_key], list):
+                    dataset_dict[_key] = torch.as_tensor(np.array(roi_infos[_key]))
+                else:
+                    dataset_dict[_key] = torch.as_tensor(roi_infos[_key])
+
+        return dataset_dict
+    
+    def read_data_inference(self, dataset_dict):
+        image = dataset_dict["image"]
+        depth = dataset_dict["depth"]
+        cfg = self.cfg
+        g_head_cfg = cfg.MODEL.POSE_NET.GEO_HEAD
+        pnp_net_cfg = cfg.MODEL.POSE_NET.PNP_NET
+        loss_cfg = cfg.MODEL.POSE_NET.LOSS_CFG
+        net_cfg = cfg.MODEL.POSE_NET
+
+        dataset_dict = copy.deepcopy(dataset_dict)
+
+        im_H_ori, im_W_ori, _ = image.shape
+        im_H, im_W = im_H_ori, im_W_ori
+        
+        if self.split != "train" and cfg.TEST.get("COLOR_AUG", False):
+            log_first_n(logging.WARNING, "use color aug during test!", n=1)
+            image = self._color_aug(image, self.color_aug_type)
+
+        # other transforms (mainly geometric ones);
+        # for 6d pose task, flip is not allowed in general except for some 2d keypoints methods
+        image, transforms = T.apply_augmentations(self.augmentation, image)
+        im_H, im_W = image_shape = image.shape[:2]  # h, w
+
+        # NOTE: scale camera intrinsic if necessary ================================
+        scale_x = im_W / im_W_ori
+        scale_y = im_H / im_H_ori  # NOTE: generally scale_x should be equal to scale_y
+        if "cam" in dataset_dict:
+            if im_W != im_W_ori or im_H != im_H_ori:
+                dataset_dict["cam"][0] *= scale_x
+                dataset_dict["cam"][1] *= scale_y
+            K = dataset_dict["cam"].astype("float32")
+            dataset_dict["cam"] = torch.as_tensor(K)
+        else:
+            raise RuntimeError("cam intrinsic is missing")
+
+        ## load depth
+        if self.with_depth:
+            assert "depth_file" in dataset_dict, "depth file is not in dataset_dict"
+            depth_path = dataset_dict["depth_file"]
+            log_first_n(logging.WARN, "with depth", n=1)
+            depth = mmcv.imread(depth_path, "unchanged") / dataset_dict["depth_factor"]  # to m
+
+            depth_ch = 1
+            if self.bp_depth:
+                depth = misc.backproject(depth, K)
+                depth_ch = 3
+
+            # TODO: maybe need to resize
+            depth = depth.reshape(im_H, im_W, depth_ch).astype("float32")
+
+        input_res = net_cfg.INPUT_RES
+        out_res = net_cfg.OUTPUT_RES
+
+        # CHW -> HWC
+        coord_2d = get_2d_coord_np(im_W, im_H, low=0, high=1).transpose(1, 2, 0)
+        #################################################################################
+        # don't load annotations at test time
+        test_bbox_type = cfg.TEST.TEST_BBOX_TYPE
+        if test_bbox_type == "gt":
+            bbox_key = "bbox"
+        else:
+            bbox_key = f"bbox_{test_bbox_type}"
+        assert not self.flatten, "Do not use flattened dicts for test!"
+        # here get batched rois
+        roi_infos = {}
+        # yapf: disable
+        roi_keys = ["file_name", "cam", "im_H", "im_W",
+                    "roi_img", "inst_id", "roi_coord_2d", "roi_coord_2d_rel",
+                    "roi_cls", "score", "time", "roi_extent",
+                    bbox_key, "bbox_mode", "bbox_center", "roi_wh",
+                    "scale", "resize_ratio", "model_info",
+        ]
+        if self.with_depth:
+            roi_keys.append("roi_depth")
+        for _key in roi_keys:
+            roi_infos[_key] = []
+        # yapf: enable
+        # TODO: how to handle image without detections
+        #   filter those when load annotations or detections, implement a function for this
+        # "annotations" means detections
+        for inst_i, inst_infos in enumerate(dataset_dict["annotations"]):
+            # inherent image-level infos
+            roi_infos["im_H"].append(im_H_ori)
+            roi_infos["im_W"].append(im_W_ori)
+            roi_infos["cam"].append(dataset_dict["cam"].cpu().numpy())
+
+            # roi-level infos
+            roi_infos["inst_id"].append(inst_i)
+            roi_infos["model_info"].append(inst_infos["model_info"])
+
+            roi_cls = inst_infos["category_id"]
+            roi_infos["roi_cls"].append(roi_cls)
+            roi_infos["score"].append(inst_infos.get("score", 1.0))
+
+            roi_infos["time"].append(inst_infos.get("time", 0))
+
+            # extent
+            roi_extent = self._get_extents(dataset_dict["dataset_name"])[roi_cls]
             roi_infos["roi_extent"].append(roi_extent)
 
             # TODO: adjust amodal bbox here

@@ -143,6 +143,16 @@ class GDRN_Lite(LightningLite):
                 train_objs=train_obj_names,
                 amp_test=cfg.TEST.AMP_TEST,
             )
+    def do_inference(self, cfg, model, iteration=None):
+        """
+        Prepare dataloader for inference
+        """
+        
+        # data_loader = build_gdrn_test_loader(cfg, dataset_name, train_objs=evaluator.train_objs)
+        # data_loader = self.setup_dataloaders(data_loader, replace_sampler=False, move_to_device=False)
+        # results_i = gdrn_inference_on_dataset(cfg, model, data_loader, evaluator, amp_test=cfg.TEST.AMP_TEST)
+        # print(results_i)
+        # return results_i
 
     def do_test(self, cfg, model, epoch=None, iteration=None):
         results = OrderedDict()
@@ -391,16 +401,16 @@ class GDRN_Lite(LightningLite):
                 # track training loss using wandb
                 if wandb.run is not None:
                     wandb.log({
-                        'val_total_loss': losses,
-                        'val_loss_coor_x': loss_dict['loss_coor_x'],
-                        'val_loss_coor_y': loss_dict['loss_coor_y'],
-                        'val_loss_coor_z': loss_dict['loss_coor_z'],
-                        'val_loss_visib_mask': loss_dict['loss_mask'],
-                        'loss_full_mask': loss_dict['loss_mask_full'],
-                        'loss_region': loss_dict['loss_region'],
-                        'loss_PM_R': loss_dict['loss_PM_R'],
-                        'loss_centroid': loss_dict['loss_centroid'],
-                        'loss_z': loss_dict['loss_z']
+                        'train/total_loss': losses,
+                        'train/loss_coor_x': loss_dict['loss_coor_x'],
+                        'train/loss_coor_y': loss_dict['loss_coor_y'],
+                        'train/loss_coor_z': loss_dict['loss_coor_z'],
+                        'train/loss_visib_mask': loss_dict['loss_mask'],
+                        'train/loss_full_mask': loss_dict['loss_mask_full'],
+                        'train/loss_region': loss_dict['loss_region'],
+                        'train/loss_PM_R': loss_dict['loss_PM_R'],
+                        'train/loss_centroid': loss_dict['loss_centroid'],
+                        'train/loss_z': loss_dict['loss_z']
                     })
 
                 assert torch.isfinite(losses).all(), loss_dict
@@ -451,16 +461,16 @@ class GDRN_Lite(LightningLite):
 
                     if wandb.run is not None:
                         wandb.log({
-                            'total_loss': val_loss_dict['total_loss'],
-                            'loss_coor_x': val_loss_dict['loss_coor_x'],
-                            'loss_coor_y': val_loss_dict['loss_coor_y'],
-                            'loss_coor_z': val_loss_dict['loss_coor_z'],
-                            'loss_visib_mask': val_loss_dict['loss_mask'],
-                            'loss_full_mask': val_loss_dict['loss_mask_full'],
-                            'loss_region': val_loss_dict['loss_region'],
-                            'loss_PM_R': val_loss_dict['loss_PM_R'],
-                            'loss_centroid': val_loss_dict['loss_centroid'],
-                            'loss_z': val_loss_dict['loss_z']
+                            'val/total_loss': val_loss_dict['total_loss'],
+                            'val/loss_coor_x': val_loss_dict['loss_coor_x'],
+                            'val/loss_coor_y': val_loss_dict['loss_coor_y'],
+                            'val/loss_coor_z': val_loss_dict['loss_coor_z'],
+                            'val/loss_visib_mask': val_loss_dict['loss_mask'],
+                            'val/loss_full_mask': val_loss_dict['loss_mask_full'],
+                            'val/loss_region': val_loss_dict['loss_region'],
+                            'val/loss_PM_R': val_loss_dict['loss_PM_R'],
+                            'val/loss_centroid': val_loss_dict['loss_centroid'],
+                            'val/loss_z': val_loss_dict['loss_z']
                         })
                     # Compared to "train_net.py", the test results are not dumped to EventStorage
                     self.barrier()

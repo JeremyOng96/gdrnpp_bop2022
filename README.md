@@ -32,32 +32,32 @@ data/
 ├── BOP_DATASETS                # https://bop.felk.cvut.cz/datasets/
     ├──cc_textures              # necessary only for generating fake data
     ├──distractor_objects       # necessary only for generating fake data
-    ├──neura_objects
+    └──neura_objects
        ├──models
-          ├──obj_000001         
-          ├──    .
-          ├──    .
-          ├──obj_00000n
-          ├──fps_points.pkl     # generate farthest point sampling based on CAD
-          ├──models_____.pkl    # generate extents and etc based on CAD
+       │  ├──obj_000001         
+       │  ├──    .
+       │  ├──    .
+       │  ├──obj_00000n
+       │  ├──fps_points.pkl     # generate farthest point sampling based on CAD
+       │  └──models_____.pkl    # generate extents and etc based on CAD
        ├──test
-          ├──depth (optional)      
-          ├──masks
-          ├──rgb
-          ├──coco_annotations.json
-          ├──per_object_annotations.h5
+       │  ├──depth (optional)      
+       │  ├──masks
+       │  ├──rgb
+       │  ├──coco_annotations.json
+       │  └──per_object_annotations.h5
        ├──train
-          ├──depth (optional)      
-          ├──masks
-          ├──rgb
-          ├──coco_annotations.json
-          ├──per_object_annotations.h5
+       │  ├──depth (optional)      
+       │  ├──masks
+       │  ├──rgb
+       │  ├──coco_annotations.json
+       │  └──per_object_annotations.h5
        ├──val
           ├──depth (optional)      
           ├──masks
           ├──rgb
           ├──coco_annotations.json
-          ├──per_object_annotations.h5
+          └──per_object_annotations.h5
 ```
 
 

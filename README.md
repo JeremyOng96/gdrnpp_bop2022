@@ -7,7 +7,7 @@ This repo provides code and models for GDRNPP_BOP2022, **winner (most of the awa
     <li> Ubuntu 22.04 & python = 3.8.20 & CUDA 12.6. </li> 
 </ol>
 
-# Steps to run GDRNPP
+# 1.0 Requirements
 * Install `detectron2` from [source](https://github.com/facebookresearch/detectron2)
 * `sh scripts/install_deps.sh`
 * Compile the cpp extensions for 
@@ -21,12 +21,11 @@ This repo provides code and models for GDRNPP_BOP2022, **winner (most of the awa
     ```
     sh ./scripts/compile_all.sh
     ```
-* Compile the cpp extensions for 
+    
+7. `pip install -r requirements/requirements.txt`
 
-## Dataset Preparation
-
-
-The structure of `datasets` folder should look like below:
+# 2.0 Dataset preparation
+The structure of `data` folder should look like below:
 ```
 data/
 ├── BOP_DATASETS                # https://bop.felk.cvut.cz/datasets/
@@ -52,7 +51,7 @@ data/
        │  ├──rgb
        │  ├──coco_annotations.json
        │  └──per_object_annotations.h5
-       ├──val
+       └──val
           ├──depth (optional)      
           ├──masks
           ├──rgb
@@ -61,20 +60,23 @@ data/
 ```
 
 
-## How to Generate Your Own model_.pkl?
+## 2.1 How to Generate Your Own model_.pkl?
 Please change the following in `ref/neura_object` to setup GDRNPP properly.
 
-#### What to change?
+### 2.1.1 What to change?
 1. Change the variable `id2obj` in `object_info.yaml`.
 2. Change the variable `diameters` of the model which can be found in `object_info.yaml`
 
-## How to Generate Your Own fps_points.pkl?
+## 2.2 How to Generate Your Own fps_points.pkl?
 1. `cd core/gdrn_modeling/tools/neura_objects`
 2. `python3 neura_object_compute_fps.py`
-## How to Generate Your Own objects_info.yaml?
+## 2.3 How to Generate Your Own objects_info.yaml?
 By running neura blenderproc with the necessary CAD files, it should generate `objects_info.yaml`
 
-### Training 
+## 2.4 [Optional] Sanity Test
+ Try running the notebooks in `/core/gdrn_modeling/datasets/data_loader_test_back.ipynb` to understand the data and ensure that the dataset is prepared correctly.
+  
+## 3.0 Training 
 
 `./core/gdrn_modeling/train_gdrn.sh <config_path> <gpu_ids> (other args)`
 
@@ -86,7 +88,7 @@ For example:
 The training result should look like:<br>
 ![trainin loss example](training_loss_example.png)
 
-### Testing 
+## 4.0 Testing 
 
 `./core/gdrn_modeling/test_gdrn.sh <config_path> <gpu_ids> <ckpt_path> (other args)`
 
@@ -97,7 +99,7 @@ For example:
 Your results should look like:<br>
 ![test results](results_example.jpg)
 
-### Inference
+## 5.0 Inference
 `python3 inference.py --model_path model_final.pth --model_info ../../data/BOP_DATASETS/neura_objects/models_.pkl --visualize True --verbose True`
 
 ## Citing GDRNPP

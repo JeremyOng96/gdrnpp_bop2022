@@ -1,44 +1,13 @@
 # GDRNPP for BOP2022
 
-This repo provides code and models for GDRNPP_BOP2022, **winner (most of the awards) of the BOP Challenge 2022 at ECCV'22 [[slides](http://cmp.felk.cvut.cz/sixd/workshop_2022/slides/bop_challenge_2022_results.pdf)]**.
+This repo provides code and models for GDRNPP_BOP2022, **winner (most of the awards) of the BOP Challenge 2022 at ECCV'22 and <b> customized for neura_objects</b>. For more information, please read through the paper [[arXiv](https://arxiv.org/pdf/2102.12145)]
 
+# Tested environments
+<ol>
+    <li> Ubuntu 22.04 & python = 3.8.20 & CUDA 12.6. </li> 
+</ol>
 
-## News
-
-[18/03/2025] Our paper has been accepted by IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)! Paper is available at [[arXiv](https://arxiv.org/pdf/2102.12145)].
-
-## Path Setting
-
-### Dataset Preparation
-Download the 6D pose datasets from the
-[BOP website](https://bop.felk.cvut.cz/datasets/) and
-[VOC 2012](https://pjreddie.com/projects/pascal-voc-dataset-mirror/)
-for background images.
-Please also download the  `test_bboxes` from
-here [OneDrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/liuxy21_mails_tsinghua_edu_cn/Eq_2aCC0RfhNisW8ZezYtIoBGfJiRIZnFxbITuQrJ56DjA?e=hPbJz2) (password: groupji) or [BaiDuYunPan](https://pan.baidu.com/s/1FzTO4Emfu-DxYkNG40EDKw)(password: vp58).
-
-The structure of `datasets` folder should look like below:
-```
-datasets/
-├── BOP_DATASETS   # https://bop.felk.cvut.cz/datasets/
-    ├──tudl
-    ├──lmo
-    ├──ycbv
-    ├──icbin
-    ├──hb
-    ├──itodd
-    └──tless
-└──VOCdevkit
-```
-
-
-### Models
-
-Download the trained models at [Onedrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/liuxy21_mails_tsinghua_edu_cn/EgOQzGZn9A5DlaQhgpTtHBwB2Bwyx8qmvLauiHFcJbnGSw?e=EZ60La) (password: groupji) or [BaiDuYunPan](https://pan.baidu.com/s/1LhXblEic6pYf1i6hOm6Otw)(password: 10t3) and put them in the folder `./output`.
-
-
-## Requirements
-* Ubuntu 18.04/20.04, CUDA 10.1/10.2/11.6, python >= 3.7, PyTorch >= 1.9, torchvision
+# Steps to run GDRNPP
 * Install `detectron2` from [source](https://github.com/facebookresearch/detectron2)
 * `sh scripts/install_deps.sh`
 * Compile the cpp extensions for 
@@ -52,36 +21,67 @@ Download the trained models at [Onedrive](https://mailstsinghuaeducn-my.sharepoi
     ```
     sh ./scripts/compile_all.sh
     ```
+* Compile the cpp extensions for 
 
-## Detection
+## Dataset Preparation
 
-We adopt yolox as the detection method. We used stronger data augmentation and ranger optimizer.
 
-### Training 
+The structure of `datasets` folder should look like below:
+```
+data/
+├── BOP_DATASETS                # https://bop.felk.cvut.cz/datasets/
+    ├──cc_textures              # necessary only for generating fake data
+    ├──distractor_objects       # necessary only for generating fake data
+    ├──neura_objects
+       ├──models
+          ├──obj_000001         
+          ├──    .
+          ├──    .
+          ├──obj_00000n
+          ├──fps_points.pkl     # generate farthest point sampling based on CAD
+          ├──models_____.pkl    # generate extents and etc based on CAD
+       ├──test
+          ├──depth (optional)      
+          ├──masks
+          ├──rgb
+          ├──coco_annotations.json
+          ├──per_object_annotations.h5
+       ├──train
+          ├──depth (optional)      
+          ├──masks
+          ├──rgb
+          ├──coco_annotations.json
+          ├──per_object_annotations.h5
+       ├──val
+          ├──depth (optional)      
+          ├──masks
+          ├──rgb
+          ├──coco_annotations.json
+          ├──per_object_annotations.h5
+```
 
-Download the pretrained model at [Onedrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/liuxy21_mails_tsinghua_edu_cn/EkCTrRfHUZVEtD7eHwLkYSkBCTXlh9ekDteSzK6jM4oo-A?e=m0aNCy) (password: groupji) or [BaiDuYunPan](https://pan.baidu.com/s/1AU7DGCmZWsH9VgQnbTRjow)(password: aw68) and put it in the folder `pretrained_models/yolox`. Then use the following command:
 
-`./det/yolox/tools/train_yolox.sh <config_path> <gpu_ids> (other args)`
+## How to Generate Your Own model_.pkl?
+Please change the following in `ref/neura_object` to setup GDRNPP properly.
 
-### Testing 
+#### What to change?
+1. Change the variable `id2obj` in `object_info.yaml`.
+2. Change the variable `diameters` of the model which can be found in `object_info.yaml`
 
-`./det/yolox/tools/test_yolox.sh <config_path> <gpu_ids> <ckpt_path> (other args)`
-
-## Pose Estimation
-
-The difference between this repo and GDR-Net (CVPR2021) mainly includes:
-
-* Domain Randomization: We used stronger domain randomization operations than the conference version during training.
-* Network Architecture: We used a more powerful backbone Convnext rather than resnet-34,  and two  mask heads for predicting amodal mask and visible mask separately.
-* Other training details, such as learning rate, weight decay, visible threshold, and bounding box type.
+## How to Generate Your Own fps_points.pkl?
+1. `cd core/gdrn_modeling/tools/neura_objects`
+2. `python3 neura_object_compute_fps.py`
+## How to Generate Your Own objects_info.yaml?
+By running neura blenderproc with the necessary CAD files, it should generate `objects_info.yaml`
 
 ### Training 
 
 `./core/gdrn_modeling/train_gdrn.sh <config_path> <gpu_ids> (other args)`
 
+
 For example:
 
-`./core/gdrn_modeling/train_gdrn.sh configs/gdrn/ycbv/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv.py 0`
+`./core/gdrn_modeling/train_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0`
 
 ### Testing 
 
@@ -89,19 +89,11 @@ For example:
 
 For example:
 
-`./core/gdrn_modeling/test_gdrn.sh configs/gdrn/ycbv/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv.py 0 output/gdrn/ycbv/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv/model_final_wo_optim.pth`
+`./core/gdrn_modeling/test_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv.py 0 output/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv/model_final.pth`
 
-## Pose Refinement
 
-We utilize depth information to further refine the estimated pose.
-We provide two types of refinement: fast refinement and iterative refinement.
-
-For fast refinement, we compare the rendered object depth and the observed depth to refine translation.
-Run
-
-`./core/gdrn_modeling/test_gdrn_depth_refine.sh <config_path> <gpu_ids> <ckpt_path> (other args)`
-
-For iterative refinement, please checkout to the [pose_refine branch](https://github.com/shanice-l/gdrnpp_bop2022/tree/pose_refine) for details.
+### Inference
+`python3 inference.py --model_path model_final.pth --model_info ../../data/BOP_DATASETS/neura_objects/models_.pkl --visualize True --verbose True`
 
 ## Citing GDRNPP
 
@@ -124,4 +116,3 @@ If you use GDRNPP in your research, please use the following BibTeX entries.
     pages     = {16611-16621}
 }
 ```
-

@@ -198,125 +198,20 @@ class Lite(GDRN_Lite):
             torch.multiprocessing.set_sharing_strategy("file_system")
         return self.do_test(cfg, model)
 
-class Inference(Lite):
-    def __init__(self, args, cfg):
-        super().__init__(
-            accelerator = 'gpu',
-            strategy = args.strategy,
-            devices = args.num_gpus,
-            num_nodes = args.num_machines,
-            precision = 16 if cfg.SOLVER.AMP.ENABLED else 32,
-        )
-        print("Configuration: ", cfg)
-        self.objs = ref.neura_object.objects
-        self.cat_ids = [cat_id for cat_id, obj_name in ref.neura_object.id2obj.items() if obj_name in self.objs] 
-        self.model = None
-        self.model_info = mmcv.load("/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/models/models_japanese_bell_supermarket_pringles_supermarket_schoko_nuss_wuerth_color_powder_wuerth_duct_tape.pkl")
-        self.cfg = cfg
-        self.init_model(args, cfg)
-        self.setup(self.model)
-        self.objects = ref.neura_object.objects
-        MyCheckpointer(self.model, save_dir=cfg.OUTPUT_DIR, prefix_to_remove="_module.").resume_or_load(args.model_path, resume=False)
-        logger.info(self.model)
-        logger.info(self.model_info)
-        MetadataCatalog.get("neura_object").set(
-            ref_key="neura_object",
-            objs= self.objects,
-        )
-
-    def predict(self, image, bbox, obj_id, camera_matrix, depth = None):
-        h, w, c = image.shape       
-        bbox_2d = np.asarray(bbox).reshape(1,4)
-        bbox_2d = BoxMode.convert(bbox_2d, BoxMode.XYWH_ABS, BoxMode.XYXY_ABS)
-
-        data = [{
-            "dataset_name": "neura_object",
-            "file_name": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/rgb/scene_000000_frame_000000.jpg",
-            "depth_file": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/depth/scene_000000_frame_000000.png",
-            "mask_path": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/mask/scene_000000_frame_000000.png",
-            "height": h,
-            "width": w,
-            "cam": camera_matrix,
-            "image": image,
-            "img_type": "img_real",
-            "depth": depth,
-            "annotations": [{
-                "category_id": obj_id, # object_id starts from 1 to n and object_id != class_id
-                "bbox": bbox_2d,
-                "bbox_mode": BoxMode.XYXY_ABS,
-                "model_info": self.model_info[obj_id],
-            }]
-        }]
-
-        dataset = GDRN_DatasetFromList(self.cfg, split="test", lst=data, flatten=False)
-        data_loader = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=1,
-            sampler=None,
-            collate_fn=trivial_batch_collator,
-            pin_memory=False,
-        )
-        data = next(iter(data_loader))
-        with torch.no_grad():
-            batch = batch_data(self.cfg, data, renderer=None, phase='test', device='cuda')
-            img = batch["roi_img"]
-            logger.info(f"Inference input image shape: {img.shape}")
-            logger.info(f"Inferencing {batch}")
-
-            plt.figure()
-            # Convert to uint8 and ensure proper range [0, 255] before cv2.cvtColor
-            display_img = img.to("cpu").numpy().squeeze().transpose(1,2,0)  # CHW to HWC
-            display_img = (display_img * 255).astype(np.uint8)  # Convert to uint8 range
-            plt.imshow(cv2.cvtColor(display_img, cv2.COLOR_BGR2RGB))
-            plt.title("Input Image from Dataset")
-            plt.show()  # This will display the figure
-            output = self.model(
-                batch["roi_img"],
-                sym_infos=batch.get("sym_info", None),
-                roi_classes=batch["roi_cls"],
-                roi_cams=batch["roi_cam"],
-                roi_whs=batch["roi_wh"],
-                roi_centers=batch["roi_center"],
-                resize_ratios=batch["resize_ratio"],
-                roi_coord_2d=batch.get("roi_coord_2d", None),
-                roi_coord_2d_rel=batch.get("roi_coord_2d_rel", None),
-                roi_extents=batch.get("roi_extent", None),
-            )
-
-        logger.info(f"Rotation output: {output['rot']}, translation output: {output['trans']}")
-        return output
-
-    def init_model(self, args, cfg):
-        self.set_my_env(args, cfg)
-        model, _ = eval(cfg.MODEL.POSE_NET.NAME).build_model_optimizer(cfg, is_test=args.eval_only)
-        self.model = model
-
 @loguru_logger.catch
 def main(args):
 
     cfg = setup(args)
-    # logger.info(f"start to train with {args.num_machines} nodes and {args.num_gpus} GPUs")
-    # if args.num_gpus > 1 and args.strategy is None:
-    #     args.strategy = "ddp"
-    # Lite(
-    #     accelerator="gpu",
-    #     strategy=args.strategy,
-    #     devices=args.num_gpus,
-    #     num_nodes=args.num_machines,
-    #     precision=16 if cfg.SOLVER.AMP.ENABLED else 32,
-    # ).run(args, cfg)
-
-
-
-    image = cv2.imread(str(Path(cur_dir).parent.parent / "data/BOP_DATASETS/neura_objects/test/rgb/scene_000000_frame_000000.jpg"))
-    bbox = np.array([[374, 224,  61,  78]]) # XYWH format
-    obj_id = 2
-    camera_matrix = np.array([[620.356,     0.,         309.6428],
-                            [0.,      622.335,      234.6795],
-                            [0,            0,         1]])
-    
-    inference = Inference(args, cfg)
-    inference.predict(image, bbox, obj_id, camera_matrix)
+    logger.info(f"start to train with {args.num_machines} nodes and {args.num_gpus} GPUs")
+    if args.num_gpus > 1 and args.strategy is None:
+        args.strategy = "ddp"
+    Lite(
+        accelerator="gpu",
+        strategy=args.strategy,
+        devices=args.num_gpus,
+        num_nodes=args.num_machines,
+        precision=16 if cfg.SOLVER.AMP.ENABLED else 32,
+    ).run(args, cfg)
     
 if __name__ == "__main__":
     import resource

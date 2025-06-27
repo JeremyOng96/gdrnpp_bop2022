@@ -47,7 +47,7 @@ from lib.utils.config_utils import try_get_key
 
 DATASETS_ROOT = osp.join(PROJ_ROOT, f"data/BOP_DATASETS/neura_objects") 
 logger = logging.getLogger(__name__)
-logger.info("Data root: ", DATASETS_ROOT)
+logger.info(f"Data root: {DATASETS_ROOT}")
 NEURA_OBJECTS = ref.neura_object.objects # if neura_objects in the ref file is edited, please delete pycache and setup the module again
 
 NEURA_CFG = dict(

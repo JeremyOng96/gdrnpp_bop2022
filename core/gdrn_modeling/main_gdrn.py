@@ -9,6 +9,7 @@ from setproctitle import setproctitle
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
+import mmcv
 
 # from torch.nn.parallel import DistributedDataParallel
 
@@ -52,7 +53,10 @@ from core.gdrn_modeling.models import (
 
 from core.gdrn_modeling.datasets.data_loader import GDRN_DatasetFromList, build_gdrn_test_loader
 from core.utils.dataset_utils import trivial_batch_collator 
-from core.gdrn_modeling.engine.engine_utils import batch_data_inference_roi, batch_data_test
+from core.gdrn_modeling.engine.engine_utils import batch_data_inference_roi, batch_data_test, batch_data
+from pathlib import Path
+from core.utils.my_distributed_sampler import InferenceSampler, RepeatFactorTrainingSampler, TrainingSampler
+from matplotlib import pyplot as plt
 
 logger = logging.getLogger("detectron2")
 
@@ -203,55 +207,71 @@ class Inference(Lite):
             num_nodes = args.num_machines,
             precision = 16 if cfg.SOLVER.AMP.ENABLED else 32,
         )
+        print("Configuration: ", cfg)
+        self.objs = ref.neura_object.objects
+        self.cat_ids = [cat_id for cat_id, obj_name in ref.neura_object.id2obj.items() if obj_name in self.objs] 
         self.model = None
+        self.model_info = mmcv.load("/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/models/models_japanese_bell_supermarket_pringles_supermarket_schoko_nuss_wuerth_color_powder_wuerth_duct_tape.pkl")
         self.cfg = cfg
         self.init_model(args, cfg)
         self.setup(self.model)
         self.objects = ref.neura_object.objects
         MyCheckpointer(self.model, save_dir=cfg.OUTPUT_DIR, prefix_to_remove="_module.").resume_or_load(args.model_path, resume=False)
         logger.info(self.model)
-        self.model_info = ref.__dict__["neura_object"].get_models_info()
         logger.info(self.model_info)
         MetadataCatalog.get("neura_object").set(
             ref_key="neura_object",
             objs= self.objects,
         )
-    def predict(self, image, bbox, obj_id, depth = None):
-        h, w, c = image.shape
-        camera_matrix = np.array([[528.466,     0.,         325.0393],
-                                  [0.,      530.59326,      240.08675],
-                                  [0,            0,         1]])
-        
+
+    def predict(self, image, bbox, obj_id, camera_matrix, depth = None):
+        h, w, c = image.shape       
         bbox_2d = np.asarray(bbox).reshape(1,4)
+        bbox_2d = BoxMode.convert(bbox_2d, BoxMode.XYWH_ABS, BoxMode.XYXY_ABS)
+
         data = [{
             "dataset_name": "neura_object",
+            "file_name": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/rgb/scene_000000_frame_000000.jpg",
+            "depth_file": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/depth/scene_000000_frame_000000.png",
+            "mask_path": "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/data/BOP_DATASETS/neura_objects/test/mask/scene_000000_frame_000000.png",
             "height": h,
             "width": w,
             "cam": camera_matrix,
             "image": image,
-            "img_type": "real",
+            "img_type": "img_real",
             "depth": depth,
             "annotations": [{
-                "category_id": obj_id,
+                "category_id": obj_id, # object_id starts from 1 to n and object_id != class_id
                 "bbox": bbox_2d,
                 "bbox_mode": BoxMode.XYXY_ABS,
-                "model_info": self.model_info[obj_id]
+                "model_info": self.model_info[obj_id],
             }]
         }]
 
-        dataset = GDRN_DatasetFromList(self.cfg, split="inference", lst=data, flatten=False)
-        data_loader = DataLoader(
+        dataset = GDRN_DatasetFromList(self.cfg, split="test", lst=data, flatten=False)
+        data_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=1,
             sampler=None,
             collate_fn=trivial_batch_collator,
+            pin_memory=False,
         )
         data = next(iter(data_loader))
         with torch.no_grad():
-            batch = batch_data_test(self.cfg, data)
-            logger.info(batch)
+            batch = batch_data(self.cfg, data, renderer=None, phase='test', device='cuda')
+            img = batch["roi_img"]
+            logger.info(f"Inference input image shape: {img.shape}")
+            logger.info(f"Inferencing {batch}")
+
+            plt.figure()
+            # Convert to uint8 and ensure proper range [0, 255] before cv2.cvtColor
+            display_img = img.to("cpu").numpy().squeeze().transpose(1,2,0)  # CHW to HWC
+            display_img = (display_img * 255).astype(np.uint8)  # Convert to uint8 range
+            plt.imshow(cv2.cvtColor(display_img, cv2.COLOR_BGR2RGB))
+            plt.title("Input Image from Dataset")
+            plt.show()  # This will display the figure
             output = self.model(
-                batch.get("roi_img", None),
+                batch["roi_img"],
                 sym_infos=batch.get("sym_info", None),
                 roi_classes=batch["roi_cls"],
                 roi_cams=batch["roi_cam"],
@@ -268,12 +288,12 @@ class Inference(Lite):
 
     def init_model(self, args, cfg):
         self.set_my_env(args, cfg)
-        model, optimizer = eval(cfg.MODEL.POSE_NET.NAME).build_model_optimizer(cfg, is_test=args.eval_only)
+        model, _ = eval(cfg.MODEL.POSE_NET.NAME).build_model_optimizer(cfg, is_test=args.eval_only)
         self.model = model
 
 @loguru_logger.catch
 def main(args):
-    from pathlib import Path
+
     cfg = setup(args)
     # logger.info(f"start to train with {args.num_machines} nodes and {args.num_gpus} GPUs")
     # if args.num_gpus > 1 and args.strategy is None:
@@ -286,11 +306,17 @@ def main(args):
     #     precision=16 if cfg.SOLVER.AMP.ENABLED else 32,
     # ).run(args, cfg)
 
+
+
     image = cv2.imread(str(Path(cur_dir).parent.parent / "data/BOP_DATASETS/neura_objects/test/rgb/scene_000000_frame_000000.jpg"))
-    bbox = np.array([[374, 224,  61,  78]])
+    bbox = np.array([[374, 224,  61,  78]]) # XYWH format
     obj_id = 2
+    camera_matrix = np.array([[620.356,     0.,         309.6428],
+                            [0.,      622.335,      234.6795],
+                            [0,            0,         1]])
+    
     inference = Inference(args, cfg)
-    inference.predict(image, bbox, obj_id)
+    inference.predict(image, bbox, obj_id, camera_matrix)
     
 if __name__ == "__main__":
     import resource

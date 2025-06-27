@@ -143,16 +143,6 @@ class GDRN_Lite(LightningLite):
                 train_objs=train_obj_names,
                 amp_test=cfg.TEST.AMP_TEST,
             )
-    def do_inference(self, cfg, model, iteration=None):
-        """
-        Prepare dataloader for inference
-        """
-        
-        # data_loader = build_gdrn_test_loader(cfg, dataset_name, train_objs=evaluator.train_objs)
-        # data_loader = self.setup_dataloaders(data_loader, replace_sampler=False, move_to_device=False)
-        # results_i = gdrn_inference_on_dataset(cfg, model, data_loader, evaluator, amp_test=cfg.TEST.AMP_TEST)
-        # print(results_i)
-        # return results_i
 
     def do_test(self, cfg, model, epoch=None, iteration=None):
         results = OrderedDict()

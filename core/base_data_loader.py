@@ -91,8 +91,10 @@ class Base_DatasetFromList(data.Dataset):
     def read_data(self, dataset_dict):
         if self.split == "train":
             return self.read_data_train(dataset_dict)
-        else:
+        elif self.split == "test":
             return self.read_data_test(dataset_dict)
+        elif self.split == "inference":
+            return self.read_data_inference(dataset_dict)
 
     def read_data_train(self, dataset_dict):
         assert self.split == "train", self.split
@@ -100,6 +102,10 @@ class Base_DatasetFromList(data.Dataset):
 
     def read_data_test(self, dataset_dict):
         assert self.split != "train", self.split
+        raise NotImplementedError()
+
+    def read_data_inference(self, dataset_dict):
+        assert self.split == "inference", self.split
         raise NotImplementedError()
 
     def _rand_another(self, idx):

@@ -11,12 +11,13 @@ from pathlib import Path
 # ---------------------------------------------------------------- #
 # ROOT PATH INFO
 # ---------------------------------------------------------------- #
-cur_dir = osp.abspath(osp.dirname(__file__))
-root_dir = osp.normpath(osp.join(cur_dir, ".."))
-# directory storing experiment data (result, model checkpoints, etc).
-output_dir = osp.join(root_dir, "output")
 
-data_root = osp.join(root_dir, "data")
+cur_dir = Path(osp.dirname(osp.abspath(__file__)))
+PROJ_ROOT = cur_dir.parent
+# directory storing experiment data (result, model checkpoints, etc).
+output_dir = osp.join(PROJ_ROOT, "output")
+
+data_root = osp.join(PROJ_ROOT, "data")
 bop_root = osp.join(data_root, "BOP_DATASETS/")
 
 # ---------------------------------------------------------------- #
@@ -43,18 +44,11 @@ objects = list(id2obj.values())
 obj_num = len(id2obj)
 obj2id = {_name: _id for _id, _name in id2obj.items()}
 
-# model_paths = osp.join(model_dir, f"{object_name}.ply")
-# texture_paths = osp.join(model_dir, f"{object_name}.png")
-
-# model_paths = [osp.join(model_dir, "obj_{:06d}.ply").format(_id) for _id in id2obj] # using BOP format which is 000001 is much easier 
-# texture_paths = [osp.join(model_dir, "obj_{:06d}.png").format(_id) for _id in id2obj] # using BOP format which is 000001 is much easier, double check on this if models without texture files are okay
-
 model_paths = model_eval_dir = [str(f) for f in sorted(list(Path(model_dir).rglob("obj_*.ply")))]
 texture_paths = [str(f) for f in sorted(list(Path(model_dir).rglob("obj_*.png")))]
 model_colors = [((i + 1) * 10, (i + 1) * 10, (i + 1) * 10) for i in range(obj_num)]  # for renderer
 
 # diameter information can be found in objects_info.yaml
-# TODO: obtain this information automatically 
 diameters = (
     np.array(
         [169.180,
@@ -72,11 +66,10 @@ zNear = 0.25
 zFar = 6.0
 center = (height / 2, width / 2)
 
-# double check if all camera matrix are correct. If this is incorrect, the rendering would be wrong
 camera_matrix = np.array([[528.466,     0.,      325.0393,],
                          [0.,      530.59326,    240.08675],
                          [0,            0,         1]])
-depth_factor = 10000.0
+# depth_factor = 10000.0
 
 
 def get_models_info():

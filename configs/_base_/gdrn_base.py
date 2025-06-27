@@ -161,13 +161,13 @@ TEST = dict(
     VIS=False,
     TEST_BBOX_TYPE="est",  # gt | est
     COLOR_AUG=False,  # use random color aug as train
-    USE_PNP=False,  # use pnp or direct prediction
-    SAVE_RESULTS_ONLY=True,  # turn this on to only save the predicted results
+    USE_PNP=True,  # use pnp or direct prediction
+    SAVE_RESULTS_ONLY=False,  # turn this on to only save the predicted results
     # ransac_pnp | net_iter_pnp (learned pnp init + iter pnp) | net_ransac_pnp (net init + ransac pnp)
     # net_ransac_pnp_rot (net_init + ransanc pnp --> net t + pnp R)
-    PNP_TYPE="ransac_pnp",
+    PNP_TYPE="net_ransac_pnp_rot",
     PRECISE_BN=dict(ENABLED=False, NUM_ITER=200),
-    USE_DEPTH_REFINE=False,
+    USE_DEPTH_REFINE=True,
     DEPTH_REFINE_ITER=2,
     DEPTH_REFINE_THRESHOLD=0.8,
     USE_COOR_Z_REFINE=False

@@ -86,7 +86,10 @@ For example:
 `./core/gdrn_modeling/train_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0`
 
 The training result should look like:<br>
-![trainin loss example](training_loss_example.png)
+![training loss example](training_loss_example.png)
+
+If your results look like below, please <b>stop</b: <br>
+![wrong_training](wrong_training.png)
 
 ## 4.0 Testing 
 

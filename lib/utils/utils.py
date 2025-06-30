@@ -20,10 +20,13 @@ from loguru import logger
 import copy
 import functools
 from .time_utils import get_time_str
+from pathlib import Path
 
-
+# Import PROJ_ROOT from ref.neura_object as the single source of truth
 cur_dir = osp.normpath(osp.abspath(osp.dirname(__file__)))
-PROJ_ROOT = osp.normpath(osp.join(cur_dir, "../../"))
+sys.path.insert(0, str(Path(cur_dir).parent.parent))
+import ref.neura_object
+PROJ_ROOT = str(ref.neura_object.PROJ_ROOT)
 
 
 def msg(*args, sep=" "):

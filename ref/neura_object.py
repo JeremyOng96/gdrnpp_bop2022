@@ -1,20 +1,12 @@
-# encoding: utf-8
-# NEURA_OBJECTS = ref.neura_object.objects # if neura_objects in the ref file is edited, please delete pycache and setup the module again
-
-"""This file includes necessary params, info."""
+"""This file contains data related to neura objects."""
 import os
 import mmcv
 import os.path as osp
 
 import numpy as np
 from pathlib import Path
-# ---------------------------------------------------------------- #
-# ROOT PATH INFO
-# ---------------------------------------------------------------- #
-
 cur_dir = Path(osp.dirname(osp.abspath(__file__)))
 PROJ_ROOT = cur_dir.parent
-# directory storing experiment data (result, model checkpoints, etc).
 output_dir = osp.join(PROJ_ROOT, "output")
 
 data_root = osp.join(PROJ_ROOT, "data")
@@ -58,8 +50,8 @@ diameters = (
          134.623]
         )
 )
-# yapf: enable
-# Camera info
+
+
 width = 640
 height = 480
 zNear = 0.25

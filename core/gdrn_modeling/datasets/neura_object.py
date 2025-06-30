@@ -4,10 +4,9 @@ import os
 import os.path as osp
 import sys
 from pathlib import Path
-cur_dir = Path(osp.dirname(osp.abspath(__file__))).parent.parent.parent
-PROJ_ROOT = cur_dir
-print("Project root: ", PROJ_ROOT)
-sys.path.insert(0, PROJ_ROOT)
+sys.path.insert(0, str(Path(osp.dirname(osp.abspath(__file__))).parent.parent.parent))
+import ref.neura_object
+PROJ_ROOT = str(ref.neura_object.PROJ_ROOT)
 
 import time
 from collections import OrderedDict
@@ -45,7 +44,7 @@ from core.gdrn_modeling.datasets.data_loader_online import GDRN_Online_DatasetFr
 from lib.utils.config_utils import try_get_key
 
 
-DATASETS_ROOT = osp.join(PROJ_ROOT, f"data/BOP_DATASETS/neura_objects") 
+DATASETS_ROOT = ref.neura_object.dataset_root
 logger = logging.getLogger(__name__)
 logger.info(f"Data root: {DATASETS_ROOT}")
 NEURA_OBJECTS = ref.neura_object.objects # if neura_objects in the ref file is edited, please delete pycache and setup the module again

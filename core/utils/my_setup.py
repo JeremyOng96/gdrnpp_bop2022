@@ -1,11 +1,16 @@
 import logging
 import os.path as osp
+import sys
+from pathlib import Path
+
+# Import PROJ_ROOT from ref.neura_object as the single source of truth
+cur_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, str(Path(cur_dir).parent.parent))
+import ref.neura_object
 
 
 def get_project_root():
-    cur_dir = osp.dirname(osp.abspath(__file__))
-    proj_root = osp.normpath(osp.join(cur_dir, "../../"))
-    return proj_root
+    return str(ref.neura_object.PROJ_ROOT)
 
 
 PROJ_ROOT = get_project_root()

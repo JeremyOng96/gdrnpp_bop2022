@@ -43,7 +43,7 @@ Run on multiple machines:
         action="store_true",
         help="whether to attempt to resume from the checkpoint directory",
     )
-    parser.add_argument("--eval-only", action="store_false", help="perform evaluation only")
+    parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
     # distributed training launcher:
     # none: non-distributed or use the detectron2 default launcher
     # pytorch: use pytorch launcher

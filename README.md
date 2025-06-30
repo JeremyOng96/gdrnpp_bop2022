@@ -86,10 +86,10 @@ For example:
 `./core/gdrn_modeling/train_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0`
 
 The training result should look like:<br>
-![training loss example](training_loss_example.png)
+![training loss example](./example/training_loss_example.png)
 
 If your results look like below, please <b>stop</b: <br>
-![wrong_training](wrong_training.png)
+![wrong_training](./example/wrong_training.png)
 
 ## 4.0 Testing 
 
@@ -100,7 +100,7 @@ For example:
 `./core/gdrn_modeling/test_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0 output/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv/model_final.pth`
 
 Your results should look like:<br>
-![test results](results_example.jpg)
+![test results](./example/results_example.jpg)
 
 ## 5.0 Inference
 `python3 inference.py --model_path model_final.pth --model_info ../../data/BOP_DATASETS/neura_objects/models_.pkl --visualize True --verbose True`

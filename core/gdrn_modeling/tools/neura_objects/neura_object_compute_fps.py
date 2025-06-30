@@ -2,18 +2,19 @@
 import os.path as osp
 import sys
 from tqdm import tqdm
+from pathlib import Path
 
+# Import PROJ_ROOT from ref.neura_object as the single source of truth
 cur_dir = osp.dirname(osp.abspath(__file__))
-PROJ_ROOT = "/home/jeremy.ong/Desktop/experiments/pose_estimation/gdrnpp_bop2022/gdrnpp_bop2022/"
+sys.path.insert(0, str(Path(cur_dir).parent.parent.parent.parent))
+import ref.neura_object
+PROJ_ROOT = str(ref.neura_object.PROJ_ROOT)
 sys.path.insert(0, PROJ_ROOT)
-
-DATASETS_ROOT = osp.join(PROJ_ROOT, f"data/BOP_DATASETS/neura_objects") 
 
 import mmcv
 from lib.pysixd import inout, misc
 import ref
 from core.utils.data_utils import get_fps_and_center
-from pathlib import Path
 
 ref_key = "neura_object"
 data_ref = ref.__dict__[ref_key]

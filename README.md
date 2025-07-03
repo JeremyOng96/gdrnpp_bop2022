@@ -93,11 +93,22 @@ If your results look like below, please <b>stop</b: <br>
 
 ## 4.0 Testing 
 
-`./core/gdrn_modeling/test_gdrn.sh <config_path> <gpu_ids> <ckpt_path> (other args)`
+1.`./core/gdrn_modeling/test_gdrn.sh <config_path> <gpu_ids> <ckpt_path> (other args)`
 
 For example:
 
-`./core/gdrn_modeling/test_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0 output/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_ycbv/model_final.pth`
+`./core/gdrn_modeling/test_gdrn.sh configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py 0 output/gdrn/neura/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura/model_final.pth`
+
+This generates two files: results.pkl & results_list.pkl (we will be using results_list.pkl)
+
+[Optional] Generate csv file
+
+2.Set SAVE_RESULTS_ONLY = False in `configs/_base_/gdrn_base.py` then <br>
+`python3 ./core/gdrn_modeling/tools/neura_objects/neura_object_vis_poses_full.py --pred_path output/gdrn/neura/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura/inference_model_final/neura_test/results_list.pkl --output_path ./output/gdrn/neura/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura/vis_full_pose`
+
+[Optional] Visualization
+
+3.`python3 ./core/gdrn_modeling/tools/neura_objects/neura_object_vis_poses_full.py --pred_path output/gdrn/neura/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura/inference_model_final/neura_test/results_list.pkl --output_path ./output/gdrn/neura/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura/vis_full_pose`
 
 Your results should look like:<br>
 ![test results](./example/results_example.jpg)

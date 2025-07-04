@@ -114,7 +114,8 @@ Your results should look like:<br>
 ![test results](./example/results_example.jpg)
 
 ## 5.0 Inference
-`python3 inference.py --model_path model_final.pth --model_info ../../data/BOP_DATASETS/neura_objects/models_.pkl --visualize True --verbose True`
+Example <br>
+`python3 ./core/gdrn_modeling/inference.py --img_path ./data/BOP_DATASETS/neura_objects/test/rgb/scene_000019_frame_000001.jpg   --bbox "292 340  79  64"   --obj_id 1   --camera_matrix "626.01318359375 0.0 318.0113830566406 0.0 627.7288208007812 240.75599670410156 0.0 0.0 1.0"   --model_info ./data/BOP_DATASETS/neura_objects/models/models_japanese_bell_supermarket_pringles_supermarket_schoko_nuss_wuerth_color_powder_wuerth_duct_tape.pkl   --model_path ./model_final.pth   --visualize True`
 
 ## Citing GDRNPP
 

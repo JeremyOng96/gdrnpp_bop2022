@@ -43,6 +43,10 @@ from lib.egl_renderer.egl_renderer_v3 import EGLRenderer
 # post processing libraries
 from core.gdrn_modeling.engine.engine_utils import get_out_coor, get_out_mask
 from lib.pysixd.pose_error import add, adi, arp_2d, re, te
+from core.gdrn_modeling.engine.gdrn_evaluator import get_pnp_ransac_pose
+
+# visualize image
+from core.utils.data_utils import denormalize_image
 
 logger = logging.getLogger("detectron2")
 
@@ -125,24 +129,40 @@ class Inference(Lite):
                 roi_extents=batch.get("roi_extent", None),
             )
         
-        refined_output = self.process_net_and_pnp(data, output)
-
+        refined_output = get_pnp_ransac_pose(self.cfg, data[0], output, 0, 0)
+        logger.info(f"refined_output: {refined_output}")
         if self.vis:
             # Use refined pose for visualization
-            data[0]["pred_rot"] = refined_output["R"]
-            data[0]["pred_trans"] = refined_output["t"]
+            data[0]["pred_rot"] = refined_output[:3, :3]
+            data[0]["pred_trans"] = refined_output[:3, 3]
+            # Store ROI image for visualization
+            data[0]["roi_img"] = batch["roi_img"]
             image_visualized = self.visualize(data)
 
-            if self.verbose:
-                logger.info(f"Rotatoin matrix: {refined_output['R']}")
-                logger.info(f"Translation vector: {refined_output['t']}")
-                plt.figure()
-                plt.imshow(image_visualized)
-                plt.show()
+            # Show original image and pose estimation result using matplotlib subplots
+            logger.info(f"Rotation matrix: {refined_output[:3, :3]}")
+            logger.info(f"Translation vector: {refined_output[:3, 3]}")
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+            
+            # Original image
+            ax1.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            ax1.set_title("Original Image")
+            ax1.axis('off')
+            
+            # Pose estimation result
+            ax2.imshow(image_visualized)
+            ax2.set_title(f"6D pose estimation result of {self.objs[data[0]['annotations'][0]['category_id']]}")
+            ax2.axis('off')
+            
+            # Make all subplots have the same height
+            plt.subplots_adjust(wspace=0.1)
+            plt.tight_layout()
+            plt.show()
                 
-            return refined_output["R"], refined_output["t"], image_visualized
+            return refined_output[:3, :3], refined_output[:3, 3], image_visualized
         
-        return refined_output["R"], refined_output["t"]
+        return refined_output[:3, :3], refined_output[:3, 3]
     
     def visualize(self, data):
         height, width = data[0]["height"], data[0]["width"]
@@ -176,113 +196,6 @@ class Inference(Lite):
         vis_im = ren_bgr
 
         return vis_im
-
-    def process_net_and_pnp(self, inputs, out_dict, pnp_type="iter"):
-            """Initialize with network prediction (learned PnP) + iter PnP
-            Args:
-                inputs: the inputs to a model.
-                    It is a list of dict. Each dict corresponds to an image and
-                    contains keys like "height", "width", "file_name", "image_id", "scene_id".
-                pnp_type: iter | ransac (use ransac+EPnP)
-                outputs:
-            """
-            cfg = self.cfg
-            net_cfg = cfg.MODEL.POSE_NET
-            out_coor_x = out_dict["coor_x"].detach()
-            out_coor_y = out_dict["coor_y"].detach()
-            out_coor_z = out_dict["coor_z"].detach()
-            out_xyz = get_out_coor(cfg, out_coor_x, out_coor_y, out_coor_z)
-            out_xyz = out_xyz.to(self._cpu_device).numpy()
-
-            out_mask = get_out_mask(cfg, out_dict["mask"].detach())
-            out_mask = out_mask.to(self._cpu_device).numpy()
-
-            out_rots = out_dict["rot"].detach().to(self._cpu_device).numpy()
-            out_transes = out_dict["trans"].detach().to(self._cpu_device).numpy()
-
-            for i, _input in enumerate(inputs):
-                logger.info(f"inputs: {_input}")
-                coord_2d = _input["roi_coord_2d"].cpu().numpy().squeeze().transpose(1, 2, 0)  # CHW->HWC
-                im_H = _input["im_H"].cpu().numpy()
-                im_W = _input["im_W"].cpu().numpy()
-                K = _input["cam"].cpu().numpy().squeeze().copy()
-                roi_label = _input["roi_cls"]
-                xyz = out_xyz.squeeze().transpose(1,2,0).squeeze()
-                mask = np.squeeze(out_mask)
-
-                (img_points, model_points,) = self.get_img_model_points_with_coords2d(
-                        mask,
-                        xyz,
-                        coord_2d,
-                        im_H=im_H,
-                        im_W=im_W,
-                        extent=_input["roi_extent"].cpu().numpy().squeeze(),
-                        mask_thr=net_cfg.GEO_HEAD.MASK_THR_TEST,
-                    )
-                
-                rot_est = out_rots
-                rot_est_net = out_rots.squeeze()
-                trans_est_net = out_transes.squeeze()
-                
-                num_points = len(img_points)
-                if num_points >= 4:
-                    dist_coeffs = np.zeros(shape=[8, 1], dtype="float64")
-                    points_2d = np.ascontiguousarray(img_points.astype(np.float64))
-                    points_3d = np.ascontiguousarray(model_points.astype(np.float64))
-                    camera_matrix = K.astype(np.float64)
-
-                    rvec0, _ = cv2.Rodrigues(rot_est_net)
-
-                    if pnp_type in ["ransac", "ransac_rot"]:
-                        points_3d = np.expand_dims(points_3d, 0)
-                        points_2d = np.expand_dims(points_2d, 0)
-                        _, rvec, t_est, _ = cv2.solvePnPRansac(
-                            objectPoints=points_3d,
-                            imagePoints=points_2d,
-                            cameraMatrix=camera_matrix,
-                            distCoeffs=dist_coeffs,
-                            flags=cv2.SOLVEPNP_EPNP,
-                            useExtrinsicGuess=True,
-                            rvec=rvec0,
-                            tvec=trans_est_net,
-                            reprojectionError=3.0,  # default 8.0
-                            iterationsCount=20,
-                        )
-                    else:  # iter PnP
-                        # points_3d = np.expand_dims(points_3d, 0)  # uncomment for EPNP
-                        # points_2d = np.expand_dims(points_2d, 0)
-                        _, rvec, t_est = cv2.solvePnP(
-                            objectPoints=points_3d,
-                            imagePoints=points_2d,
-                            cameraMatrix=camera_matrix,
-                            distCoeffs=dist_coeffs,
-                            flags=cv2.SOLVEPNP_ITERATIVE,
-                            # flags=cv2.SOLVEPNP_EPNP,
-                            useExtrinsicGuess=True,
-                            rvec=rvec0,
-                            tvec=trans_est_net,
-                        )
-                    rot_est, _ = cv2.Rodrigues(rvec)
-                    if pnp_type not in ["ransac_rot"]:
-                        diff_t_est = te(t_est, trans_est_net)
-                        if diff_t_est > 1:  # diff too large
-                            logger.warning("translation error too large: {}".format(diff_t_est))
-                            t_est = trans_est_net
-                    else:
-                        t_est = trans_est_net
-                    pose_est = np.concatenate([rot_est, t_est.reshape((3, 1))], axis=-1)
-                else:
-                    logger.warning("num points: {}".format(len(img_points)))
-                    pose_est_net = np.hstack([rot_est_net, trans_est_net.reshape(3, 1)])
-                    pose_est = pose_est_net
-
-                result = {
-                    "cls_name": roi_label,
-                    "R": pose_est[:3, :3],
-                    "t": pose_est[:3, 3],
-                }
-                
-                return result
             
     def get_img_model_points_with_coords2d(
         self, mask_pred_crop, xyz_pred_crop, coord2d_crop, im_H, im_W, extent, max_num_points=-1, mask_thr=0.5
@@ -324,22 +237,64 @@ class Inference(Lite):
             image_points = image_points[indices[:max_keep]]
         return image_points, model_points
 
+    def denormalize_image(self, image):
+        """Denormalize image for visualization (HWC format)"""
+        image_chw = image.transpose(2, 0, 1)
+        image_denorm = denormalize_image(image_chw, self.cfg)
+        image_denorm = image_denorm.transpose(1, 2, 0)
+        image_denorm = np.clip(image_denorm, 0, 255).astype(np.uint8)
+        return image_denorm
 
 def main(args):
     cfg = setup(args)
-    image = cv2.imread(str(Path(cur_dir).parent.parent / "data/BOP_DATASETS/neura_objects/test/rgb/scene_000002_frame_000000.jpg"))
-    bbox = np.array([[331, 304,  61,  35]]) # XYWH format
-    obj_id = 1
-    camera_matrix = np.array([[449.9816,   0.0000, 321.1470],
-                            [0.0000, 447.6302, 240.6461],
-                            [0,            0,         1]])
-    
+    img = cv2.imread(args.img_path)
+    bbox = [int(x) for x in args.bbox.split()]
+    obj_id = int(args.obj_id)
+    camera_matrix = np.array([float(val) for val in args.camera_matrix.split()]).reshape(3,3)
+
     inference = Inference(args, cfg)
-    inference.predict(image, bbox, obj_id, camera_matrix)
+    result = inference.predict(img, bbox, obj_id, camera_matrix)
+    
+    if args.visualize:
+        R, t, vis_img = result
+        logger.info(f"Rotation matrix:\n{R}")
+        logger.info(f"Translation vector: {t}")
+    else:
+        R, t = result
+        logger.info(f"Rotation matrix:\n{R}")
+        logger.info(f"Translation vector: {t}")
 
 if __name__ == "__main__":
     parser = my_default_argument_parser()
 
+    parser.add_argument(
+        "--img_path",
+        required=True,
+        type=str,
+        help="path to image"
+    )
+    
+    parser.add_argument(
+        "--bbox",   
+        required=True,
+        type=str,
+        help="bbox in format 'x y w h' (space-separated)"
+    )
+    
+    parser.add_argument(
+        "--obj_id",
+        required=True,
+        type=str,
+        help="object id"
+    )
+    
+    parser.add_argument(
+        "--camera_matrix",
+        required=True,
+        type=str,
+        help="9 space-separated float numbers representing camera intrinsic matrix (row-major order)"
+    )
+    
     parser.add_argument(
         "--strategy",
         default=None,
@@ -349,14 +304,14 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--model_info",
-        default=None,
+        required=True,
         type=str,
-        help="path to model info"
+        help="path to model pkl file"
         )
     
     parser.add_argument(
         "--model_path",
-        default=None,
+        required=True,
         type=str,
         help="path to model weights"
     )
@@ -364,14 +319,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--visualize",
         default=False,
-        type=bool,
         help="visualize the inference results"
     )
 
     parser.add_argument(
         "--verbose",
         default=False,
-        type=bool,
         help="verbose mode"
     )
 

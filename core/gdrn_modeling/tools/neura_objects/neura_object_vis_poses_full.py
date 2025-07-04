@@ -121,7 +121,7 @@ class Visualize:
             self.ren.render(labels, poses, K=K, image_tensor=self.image_tensor, background=im_gray_3)
             ren_bgr = (self.image_tensor[:, :, :3].detach().cpu().numpy() + 0.5).astype("uint8")
 
-            for label, gt_pose, est_pose in zip(labels, gt_poses, poses):
+            for _, (label, gt_pose, est_pose) in enumerate(zip(labels, gt_poses, poses)):
                 self.ren.render([label], [gt_pose], K=K, seg_tensor=self.seg_tensor)
                 gt_mask = (self.seg_tensor[:, :, 0].detach().cpu().numpy() > 0).astype("uint8")
 
@@ -135,12 +135,12 @@ class Visualize:
                 ren_bgr[est_edge != 0] = np.array(mmcv.color_val("green"))
 
                 vis_im = ren_bgr
-            
+                
                 random_num = random.randint(0, 10000)
-                save_path_0 = osp.join(self.output_path, "{}_{:06d}_vis0.png".format(scene_im_id, random_num))
+                save_path_0 = f"{self.output_path}/{scene_im_id}_{index}_vis0.png"
                 mmcv.imwrite(img, save_path_0)
 
-                save_path = osp.join(self.output_path, "{}_{:06d}_vis1.png".format(scene_im_id, random_num))
+                save_path = f"{self.output_path}/{scene_im_id}_{index}_vis1.png"
                 mmcv.imwrite(vis_im, save_path)
 
 

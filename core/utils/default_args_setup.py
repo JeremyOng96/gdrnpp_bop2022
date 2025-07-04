@@ -37,7 +37,7 @@ Run on multiple machines:
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--config-file", default="../../configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py", metavar="FILE", help="path to config file")
+    parser.add_argument("--config-file", default="./configs/gdrn/neura_object/convnext_a6_AugCosyAAEGray_BG05_mlL1_DMask_amodalClipBox_classAware_neura_object.py", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--resume",
         action="store_true",
